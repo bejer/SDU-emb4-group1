@@ -14,7 +14,7 @@ default:
 endif
 
 setup :
-	sudo rmmod $(NAME); sudo insmod $(NAME).ko; sudo chmod 777 /dev/$(NAME)
+	sudo rmmod $(NAME); sudo insmod $(NAME).ko
 
 .PHONY: clean distclean
 clean:
