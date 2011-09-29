@@ -34,7 +34,7 @@ static dev_t devt;
 static struct class *class;
 
 //static struct box_dev box_dev[number_of_devices];
-struct box_dev **box_dev;
+struct box_dev *box_dev;
 
 //static struct box_dev box_dev;
 
@@ -84,9 +84,8 @@ static const struct file_operations box_fops = {
 int __init box_init(void) {
   int i;
 
-  //  box_dev = (struct box_dev *) kmalloc(number_of_devices * sizeof(struct box_dev), GFP_KERNEL);
-  box_dev = kmalloc(number_of_devices * sizeof(struct box_dev), GFP_KERNEL);
-  //  box_dev = kmalloc(256, GFP_KERNEL);
+  //  printk("struct box_dev size: %d number_of_devices: %d alloc size: %d\n", sizeof(struct box_dev), number_of_devices, number_of_devices * sizeof(struct box_dev));
+  box_dev = kzalloc(number_of_devices * sizeof(struct box_dev), GFP_KERNEL);
 
   /* Request dynamic allocation of a device major number */
   if (alloc_chrdev_region(&devt, 0, number_of_devices, DEVICE_NAME) < 0) {
@@ -102,25 +101,22 @@ int __init box_init(void) {
 
   for (i = 0; i < number_of_devices; ++i) {
     /* Connect the file operations with the cdev */
-    cdev_init(&box_dev[i]->cdev, &box_fops);
-    box_dev[i]->cdev.owner = THIS_MODULE;
+    cdev_init(&box_dev[i].cdev, &box_fops);
+    box_dev[i].cdev.owner = THIS_MODULE;
 
   /* Connect the major/minor number to the cdev */
-    if (cdev_add(&box_dev[i]->cdev, devt + i, 1)) {
+    if (cdev_add(&box_dev[i].cdev, devt + i, 1)) {
       printk("Bad cdev add for box number %d\n", i);
       return 1;
     }
-
-
 
     if (!device_create(class, NULL, MKDEV(MAJOR(devt), i), NULL, "box%d", i)) {
       printk(KERN_DEBUG "Got an error for device_create()\n");
       return -1;
     }
 
-    strncpy(box_dev[i]->data, "Initial data...!\n", BOX_SIZE);
+    strncpy(box_dev[i].data, "Initial data...!\n", BOX_SIZE);
   }
-
 
   printk("Box driver initialised.\n");
 
@@ -135,7 +131,7 @@ void __exit box_exit(void) {
 
   for (i = 0; i < number_of_devices; ++i) {
     device_destroy(class, MKDEV(MAJOR(devt), i));
-    cdev_del(&box_dev[i]->cdev);
+    cdev_del(&box_dev[i].cdev);
   }
 
   class_destroy(class);
