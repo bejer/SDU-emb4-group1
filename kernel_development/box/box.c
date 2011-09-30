@@ -8,9 +8,10 @@
 #include <asm/uaccess.h> // copy_{from,to}_user
 #include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 #define DEVICE_NAME "box"
-#define BOX_SIZE 256
+#define INITIAL_SIZE 56
 
 //#define NUMBER_OF_DEVICES 5
 
@@ -26,7 +27,8 @@ struct box_dev {
   //  dev_t devt; // Device major and minor numbers
   struct cdev cdev; // kernel char device abstraction
   //struct class *class; 
-  char data[BOX_SIZE];
+  char *data;
+  size_t size;
   struct io_status io_status;
 };
 
@@ -41,7 +43,7 @@ struct box_dev *box_dev;
 /* File operations */
 ssize_t box_read(struct file *file, char *buf, size_t count, loff_t *ppos) {
   struct box_dev *bd = file->private_data;
-  ssize_t bytes_read = strnlen(bd->data, BOX_SIZE);
+  ssize_t bytes_read = strnlen(bd->data, bd->size);
 
   if (bd->io_status.bytes_outputted) {
     bd->io_status.bytes_outputted = false;
@@ -58,11 +60,19 @@ ssize_t box_read(struct file *file, char *buf, size_t count, loff_t *ppos) {
 
 ssize_t box_write(struct file *file, const char *buf, size_t count, loff_t *ppos) {
   struct box_dev *bd = file->private_data;
-  if (copy_from_user(bd->data, buf, BOX_SIZE) != 0) {
+  size_t strsize = strnlen(buf, count);
+  printk("Count: %d\n", (int)count);
+  if(strsize+1 > bd->size){
+    bd->size = count+1;
+    vfree(box_dev->data);
+    bd->data = vmalloc(bd->size);
+  }
+  if (copy_from_user(bd->data, buf, strsize) != 0) {
     return -EIO;
   }
+  bd->data[strsize] = '\0';
 
-  return strnlen(bd->data, BOX_SIZE);
+  return strnlen(bd->data, bd->size);
 }
 
 int box_open(struct inode *inode, struct file *file)
@@ -114,8 +124,9 @@ int __init box_init(void) {
       printk(KERN_DEBUG "Got an error for device_create()\n");
       return -1;
     }
-
-    strncpy(box_dev[i].data, "Initial data...!\n", BOX_SIZE);
+    box_dev[i].data = vmalloc(INITIAL_SIZE);
+    box_dev[i].size = INITIAL_SIZE;
+    strncpy(box_dev[i].data, "Initial data...!\n", INITIAL_SIZE);
   }
 
   printk("Box driver initialised.\n");
@@ -132,6 +143,7 @@ void __exit box_exit(void) {
   for (i = 0; i < number_of_devices; ++i) {
     device_destroy(class, MKDEV(MAJOR(devt), i));
     cdev_del(&box_dev[i].cdev);
+    vfree(box_dev[i].data);
   }
 
   class_destroy(class);
