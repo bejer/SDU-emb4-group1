@@ -9,13 +9,13 @@
 #include <linux/string.h>
 
 #define DEVICE_NAME "box"
-#define BOX_SIZE 256
 
 struct box_dev {
   dev_t devt; // Device major and minor numbers
   struct cdev cdev; // kernel char device abstraction
   struct class *class; 
-  char data[BOX_SIZE];
+  char *data;
+  size_t size;
 };
 
 struct io_status {
@@ -29,7 +29,7 @@ static struct io_status io_status = {
 
 /* File operations */
 ssize_t box_read(struct file *file, char *buf, size_t count, loff_t *ppos) {
-  ssize_t bytes_read = strnlen(box_dev.data, BOX_SIZE);
+  ssize_t bytes_read = strnlen(box_dev.data, box_dev.size);
 
   if (io_status.bytes_outputted) {
     io_status.bytes_outputted = false;
@@ -45,11 +45,17 @@ ssize_t box_read(struct file *file, char *buf, size_t count, loff_t *ppos) {
 }
 
 ssize_t box_write(struct file *file, const char *buf, size_t count, loff_t *ppos) {
-  if (copy_from_user(box_dev.data, buf, BOX_SIZE) != 0) {
+  size_t strsize = strnlen(buf, count);
+  if(strsize > box_dev.size){
+    box_dev.size = count+1;
+    kfree(box_dev.data);
+    box_dev.data = kmalloc(box_dev.size, GFP_KERNEL);
+  }
+  if (copy_from_user(box_dev.data, buf, box_dev.size) != 0) {
     return -EIO;
   }
 
-  return strnlen(box_dev.data, BOX_SIZE);
+  return strsize;
 }
 
 static const struct file_operations box_fops = {
@@ -86,16 +92,19 @@ int __init box_init(void) {
     return -1;
   }
 
-  strncpy(box_dev.data, "Initial data...!\0\0\0\0", BOX_SIZE);
-  box_dev.data[strnlen(box_dev.data, BOX_SIZE)] = 4;
+  box_dev.data = kmalloc(56, GFP_KERNEL);
+  box_dev.size = 56;
 
-  printk("Box driver initialised.\n");
+  strncpy(box_dev.data, "Initial data...!\0", 25);
+
+  printk("Box driver initialized.\n");
 
   return 0;
 }
 
 void __exit box_exit(void) {
   /* Release the major number */
+  kfree(box_dev.data);
   unregister_chrdev_region(box_dev.devt, 1);
 
   device_destroy(box_dev.class, box_dev.devt);
