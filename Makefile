@@ -16,7 +16,7 @@ format:
 	sudo mkfs.ext3 $(device)2
 
 build:
-	(cd $(home)/kernel_development/leddev; make; make install)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/leddev; make; make install)
 
 archive: build
 	(cd $(home); rm export.tgz; cd export; tar --exclude '*.svn*' -zcvf ../export.tgz *)
