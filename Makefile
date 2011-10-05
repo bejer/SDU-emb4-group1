@@ -29,10 +29,10 @@ archive: build
 deploy: archive
 	echo "Deploying from $(OVEROTOP) to $(device)"
 	sudo mkdir -p $(mount_place)
-	sudo mount $(device)1 $(mount_place) 
+	sudo mount $(device)1 $(mount_place)
 	sudo cp $(img)/MLO-overo $(mount_place)/MLO
-	sudo cp $(img)/u-boot-overo.bin $(mount_place)/u-boot.bin 
-	sudo cp $(img)/uImage-overo.bin $(mount_place)/uImage 
+	sudo cp $(img)/u-boot-overo.bin $(mount_place)/u-boot.bin
+	sudo cp $(img)/uImage-overo.bin $(mount_place)/uImage
 	sudo umount $(device)1
 	sudo mount $(device)2 $(mount_place)
 	(cd $(mount_place); sudo tar xvaf $(OVEROTOP)/tmp/deploy/glibc/images/overo/$(kind_of_image))
