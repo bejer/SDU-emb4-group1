@@ -1,7 +1,6 @@
 #unset KERNEL_CROSS_BUILD_ENVIRONMENT_SOURCED
 
 if [[ -z "${KERNEL_CROSS_BUILD_ENVIRONMENT_SOURCED}" ]]; then
-   OVEROTOP=/home/michael/embedded/emb4/overo-oe-mich/build
 
         # ups: MACHINE must be set, 'overo' seems right for kernel dev
         MACHINE=overo
