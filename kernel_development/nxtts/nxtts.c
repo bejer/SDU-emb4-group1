@@ -1,0 +1,285 @@
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/fs.h>
+#include <linux/device.h>
+#include <linux/mutex.h>
+#include <linux/slab.h>
+#include <linux/cdev.h>
+#include <linux/spi/spi.h>
+#include <linux/string.h>
+#include <asm/uaccess.h>
+
+#define USER_BUFF_SIZE	128
+
+#define SPI_BUS 1
+#define SPI_BUS_CS0 0
+#define SPI_BUS_SPEED 3000000
+#define SPI_BITS_PER_WORD 8
+#define DEVICE_NAME "nxtts"
+
+//Only support one device for now!!
+static int number_of_devices = 1;
+
+struct nxtts_dev {
+	dev_t devt;
+	struct cdev cdev;
+	struct class *class;
+	struct spi_device *spi_device;
+	char *user_buff;
+};
+
+static struct nxtts_dev nxtts_dev;
+
+
+static ssize_t nxtts_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
+{
+	size_t len;
+	ssize_t status = 0;
+
+	if (!buff) 
+		return -EFAULT;
+
+	if (*offp > 0){
+		printk(KERN_DEBUG "offp: %d",*offp); 
+		return 0;
+	}
+	if (!nxtts_dev.spi_device)
+		strcpy(nxtts_dev.user_buff, "spi_device is NULL\n");
+	else if (!nxtts_dev.spi_device->master)
+		strcpy(nxtts_dev.user_buff, "spi_device->master is NULL\n");
+	else
+		sprintf(nxtts_dev.user_buff, "%s ready on SPI%d.%d\n", DEVICE_NAME, nxtts_dev.spi_device->master->bus_num, nxtts_dev.spi_device->chip_select);
+
+
+	len = strlen(nxtts_dev.user_buff);
+ 
+	if (len < count) 
+		count = len;
+
+	if (copy_to_user(buff, nxtts_dev.user_buff, count))  {
+		printk(KERN_ALERT "nxtts_read(): copy_to_user() failed\n");
+		status = -EFAULT;
+	} else {
+		*offp += count;
+		status = count;
+	}
+
+	return status;	
+}
+
+static int nxtts_open(struct inode *inode, struct file *filp)
+{	
+	int status = 0;
+
+	if (!nxtts_dev.user_buff) {
+		nxtts_dev.user_buff = kmalloc(USER_BUFF_SIZE, GFP_KERNEL);
+		if (!nxtts_dev.user_buff) 
+			status = -ENOMEM;
+	}	
+
+
+	return status;
+}
+
+static int nxtts_probe(struct spi_device *spi_device)
+{
+	nxtts_dev.spi_device = spi_device;
+
+	return 0;
+}
+
+static int nxtts_remove(struct spi_device *spi_device)
+{
+	nxtts_dev.spi_device = NULL;
+
+	return 0;
+}
+
+static int __init add_nxtts_device_to_bus(void)
+{
+	struct spi_master *spi_master;
+	struct spi_device *spi_device;
+	struct device *pdev;
+	char buff[64];
+	int status = 0;
+
+	/* This call returns a refcounted pointer to the relevant spi_master - the caller must release this pointer(device_put()) */	
+	spi_master = spi_busnum_to_master(SPI_BUS);
+	if (!spi_master) {
+		printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n", SPI_BUS);
+		printk(KERN_ALERT "Missing modprobe omap2_mcspi?\n");
+		return -1;
+	}
+
+	spi_device = spi_alloc_device(spi_master);
+	if (!spi_device) {
+		printk(KERN_ALERT "spi_alloc_device() failed\n");
+		return -1;
+	}
+
+	spi_device->chip_select = SPI_BUS_CS0;
+
+	/* Check whether this SPI bus.cs is already claimed */
+	/* snprintf the c-way of formatting a string */
+	snprintf(buff, sizeof(buff), "%s.%u", dev_name(&spi_device->master->dev), spi_device->chip_select);
+
+	pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
+ 	if (pdev) {
+		/* We are not going to use this spi_device, so free it. Since spi_device is not added then decrement the refcount */ 
+		spi_dev_put(spi_device);
+
+		/* 
+		 * There is already a device configured for this bus.cs  
+		 * It is okay if it us, otherwise complain and fail.
+		 */
+		if (pdev->driver && pdev->driver->name && strcmp(DEVICE_NAME, pdev->driver->name)) {
+			printk(KERN_ALERT "Driver [%s] already registered for %s\n", pdev->driver->name, buff);
+			status = -1;
+		} 
+	} else {
+		spi_device->max_speed_hz = SPI_BUS_SPEED;
+		spi_device->mode = SPI_MODE_0;
+		spi_device->bits_per_word = SPI_BITS_PER_WORD;
+		spi_device->irq = -1;
+		spi_device->controller_state = NULL;
+		spi_device->controller_data = NULL;
+		strlcpy(spi_device->modalias, DEVICE_NAME, SPI_NAME_SIZE);
+
+		status = spi_add_device(spi_device);		
+		if (status < 0) {
+			/* If spi_device is not added then decrement the refcount */	
+			spi_dev_put(spi_device);
+			printk(KERN_ALERT "spi_add_device() failed: %d\n", status);		
+		}				
+	}
+	/* See comment for spi_busnum_to_master */
+	put_device(&spi_master->dev);
+
+	return status;
+}
+
+static struct spi_driver nxtts_driver = {
+	.driver = {
+		.name =	DEVICE_NAME,
+		.owner = THIS_MODULE,
+	},
+	.probe = nxtts_probe,
+	.remove = __devexit_p(nxtts_remove),	
+};
+
+static int __init nxtts_init_spi(void)
+{
+	int error;
+
+	error = spi_register_driver(&nxtts_driver);
+	if (error < 0) {
+		printk(KERN_ALERT "spi_register_driver() failed %d\n", error);
+		return error;
+	}
+
+	error = add_nxtts_device_to_bus();
+	if (error < 0) {
+		printk(KERN_ALERT "add_nxtts_to_bus() failed\n");
+		spi_unregister_driver(&nxtts_driver);
+		return error;
+	}
+
+	return 0;
+}
+
+static const struct file_operations nxtts_fops = {
+	.owner =	THIS_MODULE,
+	.read = 	nxtts_read,
+	.open =		nxtts_open,	
+};
+
+static int __init nxtts_init_cdev(void)
+{
+	int error;
+
+	nxtts_dev.devt = MKDEV(0, 0);
+
+	error = alloc_chrdev_region(&nxtts_dev.devt, 0, number_of_devices, DEVICE_NAME);
+	if (error < 0) {
+		printk(KERN_ALERT "alloc_chrdev_region() failed: %d \n", 
+			error);
+		return -1;
+	}
+
+	cdev_init(&nxtts_dev.cdev, &nxtts_fops);
+	nxtts_dev.cdev.owner = THIS_MODULE;
+
+	error = cdev_add(&nxtts_dev.cdev, nxtts_dev.devt, 1);
+	if (error) {
+		printk(KERN_ALERT "cdev_add() failed: %d\n", error);
+		unregister_chrdev_region(nxtts_dev.devt, 1);
+		return -1;
+	}	
+
+	return 0;
+}
+
+static int __init nxtts_init_class(void)
+{
+	nxtts_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
+
+	if (IS_ERR(nxtts_dev.class)) {
+		printk(KERN_ALERT "class_create() failed\n");
+		return -1;
+	}
+
+	if (!device_create(nxtts_dev.class, NULL, nxtts_dev.devt, NULL, DEVICE_NAME)) {
+		printk(KERN_ALERT "device_create(..., %s) failed\n", DEVICE_NAME);
+		class_destroy(nxtts_dev.class);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int __init nxtts_init(void)
+{
+	memset(&nxtts_dev, 0, sizeof(nxtts_dev));
+
+	if (nxtts_init_cdev() < 0) 
+		goto fail_1;
+
+	if (nxtts_init_class() < 0)  
+		goto fail_2;
+
+	if (nxtts_init_spi() < 0) 
+		goto fail_3;
+
+	return 0;
+
+fail_3:
+	device_destroy(nxtts_dev.class, nxtts_dev.devt);
+	class_destroy(nxtts_dev.class);
+
+fail_2:
+	cdev_del(&nxtts_dev.cdev);
+	unregister_chrdev_region(nxtts_dev.devt, 1);
+
+fail_1:
+	return -1;
+}
+module_init(nxtts_init);
+
+static void __exit nxtts_exit(void)
+{
+	spi_unregister_driver(&nxtts_driver);
+
+	device_destroy(nxtts_dev.class, nxtts_dev.devt);
+	class_destroy(nxtts_dev.class);
+
+	cdev_del(&nxtts_dev.cdev);
+	unregister_chrdev_region(nxtts_dev.devt, 1);
+
+	if (nxtts_dev.user_buff)
+		kfree(nxtts_dev.user_buff);
+}
+module_exit(nxtts_exit);
+MODULE_AUTHOR("Tja");
+MODULE_LICENSE("GPL");
+MODULE_VERSION("0.1");
+
