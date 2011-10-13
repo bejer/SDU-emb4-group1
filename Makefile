@@ -1,7 +1,7 @@
 #OVEROTOP = /home/michael/embedded/emb4/overo-oe-guide/build
 OVEROTOP = /home/michael/embedded/emb4/overo-oe-mich/build
 device := /dev/sdb
-export := /home/michael/Temp/SDU-emb4-group1
+home := /home/michael/Temp/SDU-emb4-group1
 #img := $(OVEROTOP)/tmp_clean_myimage/deploy/glibc/images/overo
 #img := $(OVEROTOP)/tmp_working_console_image/deploy/glibc/images/overo
 img := $(OVEROTOP)/tmp/deploy/glibc/images/overo
@@ -20,13 +20,14 @@ format:
 	sudo mkfs.ext3 $(device)2
 
 build:
-	(source $(export)/env/kernel-dev.txt; cd $(export)/kernel_development/leddev; make; make install)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/leddev; make; make install)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/nxtts; make; make install)
 
 archive: build
-	(cd $(export); rm export.tgz; cd export; tar --exclude '*.svn' -zcvf ../export.tgz *)
+	(cd $(home); rm export.tgz; cd export; tar --exclude '*.svn' -zcvf ../export.tgz *)
 
 
-#(cd $(export); rm -f export.tgz; tar --exclude '*.svn*' -zcvf export.tgz export/*)
+#(cd $(home); rm -f export.tgz; tar --exclude '*.svn*' -zcvf export.tgz export/*)
 
 deploy: archive
 	echo "Deploying from $(OVEROTOP) to $(device)"
@@ -38,12 +39,12 @@ deploy: archive
 	sudo umount $(device)1
 	sudo mount $(device)2 $(mount_place)
 	(cd $(mount_place); sudo tar xvaf $(OVEROTOP)/tmp/deploy/glibc/images/overo/$(kind_of_image))
-	(cd $(mount_place); sudo tar -zxvf $(export)/export.tgz)
+	(cd $(mount_place); sudo tar -zxvf $(home)/export.tgz)
 	sudo umount $(device)2
 
 xport: archive
 	sudo mount $(device)2 $(mount_place)
-	(cd $(mount_place); sudo rm -rf export; sudo tar -zxvf $(export)/export.tgz)
+	(cd $(mount_place); sudo rm -rf export; sudo tar -zxvf $(home)/export.tgz)
 	sudo umount $(device)2
 
 default:
