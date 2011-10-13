@@ -20,7 +20,7 @@ build:
 	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/nxtts; make; make install)
 
 archive: build
-	(cd $(home); rm export.tgz; cd export; tar --exclude '*.svn*' -zcvf ../export.tgz *)
+	(cd $(home); rm export.tgz; cd export; tar --exclude '*.svn*' --exclude '.gitignore' -zcvf ../export.tgz .)
 
 deploy: archive
 	echo "Deploying from $(OVEROTOP) to $(device)"

@@ -23,6 +23,7 @@ Module.symvers
 *.rar
 *.tar
 *.zip
+*.tgz
 
 # Logs and databases #
 ######################
