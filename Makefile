@@ -3,10 +3,12 @@ OVEROTOP = /home/michael/embedded/emb4/overo-oe-mich/build
 device := /dev/sdb
 export := /home/michael/Temp/SDU-emb4-group1
 #img := $(OVEROTOP)/tmp_clean_myimage/deploy/glibc/images/overo
-img := $(OVEROTOP)/tmp_working_console_image/deploy/glibc/images/overo
+#img := $(OVEROTOP)/tmp_working_console_image/deploy/glibc/images/overo
+img := $(OVEROTOP)/tmp/deploy/glibc/images/overo
 mount_place = /mnt/emb4
 #kind_of_image := minimalist-image-overo.tar.bz2
 kind_of_image := omap3-console-image-overo.tar.bz2
+#kind_of_image := minimalist-image_with_wifi-overo.tar.bz2
 
 # umount:
 # 	sudo umount $(device)1
