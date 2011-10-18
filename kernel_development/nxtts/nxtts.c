@@ -16,6 +16,9 @@
 #define SPI_BUS_SPEED 3000000
 #define SPI_BITS_PER_WORD 8
 #define DEVICE_NAME "nxtts"
+//Sensor1 ADC IN0
+#define ADC_ADDRESS 0x00
+#define SPI_BUFF_SIZE 2
 
 //Only support one device for now!!
 static int number_of_devices = 1;
@@ -28,8 +31,43 @@ struct nxtts_dev {
 	char *user_buff;
 };
 
+struct nxtts_control {
+	struct spi_message msg;
+	struct spi_transfer transfer;
+	u8 *tx_buff; 
+	u8 *rx_buff;
+};
+
+static struct nxtts_control nxtts_ctl;
 static struct nxtts_dev nxtts_dev;
 
+
+static void nxtts_prepare_spi_message(void)
+{
+	spi_message_init(&nxtts_ctl.msg);
+
+	nxtts_ctl.tx_buff[0] = ADC_ADDRESS;
+	nxtts_ctl.tx_buff[1] = 0x00;
+	
+	memset(nxtts_ctl.rx_buff, 0, SPI_BUFF_SIZE);
+
+	nxtts_ctl.transfer.tx_buf = nxtts_ctl.tx_buff;
+	nxtts_ctl.transfer.rx_buf = nxtts_ctl.rx_buff;
+	nxtts_ctl.transfer.len = 2;
+
+	spi_message_add_tail(&nxtts_ctl.transfer, &nxtts_ctl.msg);
+}
+
+static int nxtts_do_one_message(void)
+{
+	int status;
+
+	nxtts_prepare_spi_message();
+
+	status = spi_sync(nxtts_dev.spi_device, &nxtts_ctl.msg);
+
+	return status;	
+}
 
 static ssize_t nxtts_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
 {
@@ -47,9 +85,10 @@ static ssize_t nxtts_read(struct file *filp, char __user *buff, size_t count, lo
 		strcpy(nxtts_dev.user_buff, "spi_device is NULL\n");
 	else if (!nxtts_dev.spi_device->master)
 		strcpy(nxtts_dev.user_buff, "spi_device->master is NULL\n");
-	else
-		sprintf(nxtts_dev.user_buff, "%s ready on SPI%d.%d\n", DEVICE_NAME, nxtts_dev.spi_device->master->bus_num, nxtts_dev.spi_device->chip_select);
-
+	else {
+		status = nxtts_do_one_message();
+		sprintf(nxtts_dev.user_buff, "Status: %d\nTX: %d %d\nRX: %d %d\n", nxtts_ctl.msg.status, nxtts_ctl.tx_buff[0], nxtts_ctl.tx_buff[1], nxtts_ctl.rx_buff[0], nxtts_ctl.rx_buff[1]);
+	}
 
 	len = strlen(nxtts_dev.user_buff);
  
@@ -57,7 +96,7 @@ static ssize_t nxtts_read(struct file *filp, char __user *buff, size_t count, lo
 		count = len;
 
 	if (copy_to_user(buff, nxtts_dev.user_buff, count))  {
-		printk(KERN_ALERT "nxtts_read(): copy_to_user() failed\n");
+		printk(KERN_DEBUG "nxtts_read(): copy_to_user() failed\n");
 		status = -EFAULT;
 	} else {
 		*offp += count;
@@ -171,6 +210,18 @@ static int __init nxtts_init_spi(void)
 {
 	int error;
 
+	nxtts_ctl.tx_buff = kzalloc(SPI_BUFF_SIZE, GFP_KERNEL | GFP_DMA);
+	if (!nxtts_ctl.tx_buff) {
+		error = -ENOMEM;
+		goto nxtts_init_error;
+	}
+
+	nxtts_ctl.rx_buff = kzalloc(SPI_BUFF_SIZE, GFP_KERNEL | GFP_DMA);
+	if (!nxtts_ctl.rx_buff) {
+		error = -ENOMEM;
+		goto nxtts_init_error;
+	}
+
 	error = spi_register_driver(&nxtts_driver);
 	if (error < 0) {
 		printk(KERN_ALERT "spi_register_driver() failed %d\n", error);
@@ -185,6 +236,20 @@ static int __init nxtts_init_spi(void)
 	}
 
 	return 0;
+
+nxtts_init_error:
+
+	if (nxtts_ctl.tx_buff) {
+		kfree(nxtts_ctl.tx_buff);
+		nxtts_ctl.tx_buff = 0;
+	}
+
+	if (nxtts_ctl.rx_buff) {
+		kfree(nxtts_ctl.rx_buff);
+		nxtts_ctl.rx_buff = 0;
+	}
+
+	return error;
 }
 
 static const struct file_operations nxtts_fops = {
@@ -240,6 +305,7 @@ static int __init nxtts_init_class(void)
 static int __init nxtts_init(void)
 {
 	memset(&nxtts_dev, 0, sizeof(nxtts_dev));
+	memset(&nxtts_ctl, 0, sizeof(nxtts_ctl));
 
 	if (nxtts_init_cdev() < 0) 
 		goto fail_1;
@@ -274,6 +340,12 @@ static void __exit nxtts_exit(void)
 
 	cdev_del(&nxtts_dev.cdev);
 	unregister_chrdev_region(nxtts_dev.devt, 1);
+
+	if (nxtts_ctl.tx_buff)
+		kfree(nxtts_ctl.tx_buff);
+
+	if (nxtts_ctl.rx_buff)
+		kfree(nxtts_ctl.rx_buff);
 
 	if (nxtts_dev.user_buff)
 		kfree(nxtts_dev.user_buff);
