@@ -5,6 +5,8 @@ if [[ -z "${KERNEL_CROSS_BUILD_ENVIRONMENT_SOURCED}" ]]; then
         # ups: MACHINE must be set, 'overo' seems right for kernel dev
         MACHINE=overo
 
+	OVEROTOP=/home/michael/embedded/emb4/overo-oe-mich/build
+
         # Set OETMP to be your OE config TMPDIR. This is a configurable parameter for OE. 
 
         # For gumstix setups, it is set in ${OVEROTOP}/build/conf/site.conf
