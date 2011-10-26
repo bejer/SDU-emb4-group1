@@ -8,6 +8,7 @@
 #include <linux/spi/spi.h>
 #include <linux/string.h>
 #include <asm/uaccess.h>
+#include <mach/gpio.h>
 
 #define USER_BUFF_SIZE	128
 
@@ -19,6 +20,9 @@
 //Sensor1 ADC IN0
 #define ADC_ADDRESS 0x00
 #define SPI_BUFF_SIZE 2
+
+#define GPIO_1OE 10
+#define GPIO_2OE 71
 
 //Only support one device for now!!
 static int number_of_devices = 1;
@@ -302,6 +306,41 @@ static int __init nxtts_init_class(void)
 	return 0;
 }
 
+static int __init nxtts_init_level_shifters(void) {
+  if (gpio_request(GPIO_1OE, "SPI1OE")) {
+    printk(KERN_ALERT "gpio_request failed for SPI1OE\n");
+    goto init_pins_fail_1;
+  }
+
+  if (gpio_request(GPIO_2OE, "SPI2OE")) {
+    printk(KERN_ALERT "gpio_request failed for SPI2OE\n");
+    goto init_pins_fail_2;
+  }
+
+  if (gpio_direction_output(GPIO_1OE, 0)) {
+    printk(KERN_ALERT "gpio_direction_output GPIO_1OE failed\n");
+    goto init_pins_fail_3;
+  }
+
+  if (gpio_direction_output(GPIO_2OE, 0)) {
+    printk(KERN_ALERT "gpio_direction_output GPIO_2OE failed\n");
+    goto init_pins_fail_3;
+  }
+
+  //  goto init_pins_fail_1;
+  return 0;
+
+ init_pins_fail_3:
+  gpio_free(GPIO_2OE);
+
+ init_pins_fail_2:
+  gpio_free(GPIO_1OE);
+
+ init_pins_fail_1:
+
+  return -1;
+}
+
 static int __init nxtts_init(void)
 {
 	memset(&nxtts_dev, 0, sizeof(nxtts_dev));
@@ -316,7 +355,15 @@ static int __init nxtts_init(void)
 	if (nxtts_init_spi() < 0) 
 		goto fail_3;
 
+	if (nxtts_init_level_shifters() < 0)
+	  goto fail_4;
+
+
 	return 0;
+
+ fail_4:
+	gpio_free(GPIO_2OE);
+	gpio_free(GPIO_1OE);
 
 fail_3:
 	device_destroy(nxtts_dev.class, nxtts_dev.devt);
@@ -349,6 +396,11 @@ static void __exit nxtts_exit(void)
 
 	if (nxtts_dev.user_buff)
 		kfree(nxtts_dev.user_buff);
+
+	/* Release spi level shifter pins */
+	gpio_free(GPIO_2OE);
+	gpio_free(GPIO_1OE);
+
 }
 module_exit(nxtts_exit);
 MODULE_AUTHOR("Tja");
