@@ -126,6 +126,7 @@ static int nxtts_open(struct inode *inode, struct file *filp)
 
 static int nxtts_probe(struct spi_device *spi_device)
 {
+  printk("Inside nxtts_probe()\n");
 	nxtts_dev.spi_device = spi_device;
 
 	return 0;
@@ -133,6 +134,8 @@ static int nxtts_probe(struct spi_device *spi_device)
 
 static int nxtts_remove(struct spi_device *spi_device)
 {
+  printk("Inside nxtts_remove()\n");
+
 	nxtts_dev.spi_device = NULL;
 
 	return 0;
@@ -343,6 +346,7 @@ static int __init nxtts_init_level_shifters(void) {
 
 static int __init nxtts_init(void)
 {
+  printk("Init the nxtts driver\n");
 	memset(&nxtts_dev, 0, sizeof(nxtts_dev));
 	memset(&nxtts_ctl, 0, sizeof(nxtts_ctl));
 
@@ -380,6 +384,7 @@ module_init(nxtts_init);
 
 static void __exit nxtts_exit(void)
 {
+  printk("Exiting the nxtts driver\n");
 	spi_unregister_driver(&nxtts_driver);
 
 	device_destroy(nxtts_dev.class, nxtts_dev.devt);
