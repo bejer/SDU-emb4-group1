@@ -310,7 +310,13 @@ static int __init nxtts_init_class(void)
 }
 
 static int __init nxtts_init_level_shifters(void) {
-  if (gpio_request(GPIO_1OE, "SPI1OE")) {
+
+gpio_request(74, "SCL4");
+gpio_direction_output(74,0);
+gpio_request(73, "SCL1");
+gpio_direction_output(73,1);  
+
+if (gpio_request(GPIO_1OE, "SPI1OE")) {
     printk(KERN_ALERT "gpio_request failed for SPI1OE\n");
     goto init_pins_fail_1;
   }
@@ -405,6 +411,9 @@ static void __exit nxtts_exit(void)
 	/* Release spi level shifter pins */
 	gpio_free(GPIO_2OE);
 	gpio_free(GPIO_1OE);
+
+gpio_free(74);
+gpio_free(73);
 
 }
 module_exit(nxtts_exit);
