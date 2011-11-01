@@ -33,6 +33,9 @@
 #define ADC_CHANNEL6 0x30
 #define ADC_CHANNEL7 0x38
 
+#define SPI_DEVICE_IS_NULL -1
+#define SPI_MASTER_IS_NULL -2
+
 #define SPI_BUFF_SIZE 4
 // BUF size org. 2
 
@@ -129,43 +132,52 @@ static int spi_do_message(int channel)
   return status;
 }
 
+static int adc_sample_channel(int channel, int *data) {
+  int status;
+  int sample_value;
+
+  if (!adc_dev.spi_device) {
+    return SPI_DEVICE_IS_NULL;
+  } else if (!adc_dev.spi_device->master) {
+    return SPI_MASTER_IS_NULL;
+  } else {
+    status = spi_do_message(channel);
+
+    sample_value = spi_ctl.rx_buff[2];
+    sample_value = sample_value << 8;
+    sample_value |= spi_ctl.rx_buff[3];
+
+    *data = sample_value;
+  }
+  return status;
+}
+
+EXPORT_SYMBOL(adc_sample_channel);
+
 static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
 {
   size_t len;
   ssize_t status = 0;
   struct adc_info *adc_info = filp->private_data;
   int sample_value;
+  int adc_sample_status;
 
   if (!buff) 
     return -EFAULT;
 
   if (*offp > 0){
-    printk(KERN_DEBUG "offp: %d",*offp); 
+    printk(KERN_DEBUG "offp: %lld",*offp); 
     return 0;
   }
-  if (!adc_dev.spi_device)
+
+  adc_sample_status = adc_sample_channel(adc_info->channel, &sample_value);
+
+  if (adc_sample_status == SPI_DEVICE_IS_NULL)
     strcpy(adc_dev.user_buff, "spi_device is NULL\n");
-  else if (!adc_dev.spi_device->master)
+  else if (adc_sample_status == SPI_MASTER_IS_NULL)
     strcpy(adc_dev.user_buff, "spi_device->master is NULL\n");
   else {
-    status = spi_do_message(adc_info->channel);
-
-    sample_value = spi_ctl.rx_buff[2];
-    sample_value = sample_value << 8;
-    sample_value |= spi_ctl.rx_buff[3];
-    sprintf(adc_dev.user_buff, "%X", sample_value);
-    /*		sprintf(nxtts_dev.user_buff, "Status: %d\nADC0: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC1: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC2: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC3: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC4: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\n", nxtts_ctl.msg.status, 
-		nxtts_ctl.tx_buff[0], nxtts_ctl.tx_buff[1],nxtts_ctl.tx_buff[2],nxtts_ctl.tx_buff[3], 
-		nxtts_ctl.rx_buff[0], nxtts_ctl.rx_buff[1],nxtts_ctl.rx_buff[2],nxtts_ctl.rx_buff[3],
-		nxtts_ctl.tx_buff[4], nxtts_ctl.tx_buff[5],nxtts_ctl.tx_buff[6],nxtts_ctl.tx_buff[7], 
-		nxtts_ctl.rx_buff[4], nxtts_ctl.rx_buff[5],nxtts_ctl.rx_buff[6],nxtts_ctl.rx_buff[7],
-		nxtts_ctl.tx_buff[8], nxtts_ctl.tx_buff[9],nxtts_ctl.tx_buff[10],nxtts_ctl.tx_buff[11], 
-		nxtts_ctl.rx_buff[8], nxtts_ctl.rx_buff[9],nxtts_ctl.rx_buff[10],nxtts_ctl.rx_buff[11],
-		nxtts_ctl.tx_buff[12], nxtts_ctl.tx_buff[13],nxtts_ctl.tx_buff[14],nxtts_ctl.tx_buff[15], 
-		nxtts_ctl.rx_buff[12], nxtts_ctl.rx_buff[13],nxtts_ctl.rx_buff[14],nxtts_ctl.rx_buff[15],
-		nxtts_ctl.tx_buff[16], nxtts_ctl.tx_buff[17],nxtts_ctl.tx_buff[18],nxtts_ctl.tx_buff[19],
-		nxtts_ctl.rx_buff[16], nxtts_ctl.rx_buff[17],nxtts_ctl.rx_buff[18],nxtts_ctl.rx_buff[19]);
-    */
+    sprintf(adc_dev.user_buff, "%d\n", sample_value); // could also be outputted in hexadecimal %X
   }
 
   len = strlen(adc_dev.user_buff);
@@ -348,7 +360,7 @@ static int __init init_cdev(void)
   cdev_init(&adc_dev.cdev, &adc_fops);
   adc_dev.cdev.owner = THIS_MODULE;
 
-  error = cdev_add(&adc_dev.cdev, adc_dev.devt, 1);
+  error = cdev_add(&adc_dev.cdev, adc_dev.devt, NO_ADC_CHANNELS);
   if (error) {
     printk(KERN_ALERT "cdev_add() failed: %d\n", error);
     unregister_chrdev_region(adc_dev.devt, 1);
@@ -361,6 +373,7 @@ static int __init init_cdev(void)
 static int __init init_class(void)
 {
   int i;
+  int j;
 
   adc_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
 
@@ -381,7 +394,6 @@ static int __init init_class(void)
   return 0;
 
  failed_device_creation:
-  int j;
   for (j = i-1; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
@@ -429,6 +441,8 @@ static int __init init_level_shifters(void) {
 
 static int __init init(void)
 {
+  int j;
+
   memset(&adc_dev, 0, sizeof(adc_dev));
   memset(&spi_ctl, 0, sizeof(spi_ctl));
 
@@ -452,7 +466,6 @@ static int __init init(void)
   gpio_free(GPIO_1OE);
 
  fail_3:
-  int j;
   for (j = NO_ADC_CHANNELS; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
@@ -467,12 +480,12 @@ static int __init init(void)
 }
 module_init(init);
 
-static void __exit exit(void)
+static void __exit adc_exit(void)
 {
+  int j;
+
   spi_unregister_driver(&spi_driver);
 
-
-  int j;
   for (j = NO_ADC_CHANNELS; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
@@ -487,15 +500,11 @@ static void __exit exit(void)
   if (spi_ctl.rx_buff)
     kfree(spi_ctl.rx_buff);
 
-  if (adc_dev.user_buff)
-    kfree(adc_dev.user_buff);
-
   /* Release spi level shifter pins */
   gpio_free(GPIO_2OE);
   gpio_free(GPIO_1OE);
-
 }
-module_exit(exit);
+module_exit(adc_exit);
 MODULE_AUTHOR("Group1");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.1");
