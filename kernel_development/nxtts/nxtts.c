@@ -18,8 +18,15 @@
 #define SPI_BITS_PER_WORD 8
 #define DEVICE_NAME "nxtts"
 //Sensor1 ADC IN0
-#define ADC_ADDRESS 0x00
-#define SPI_BUFF_SIZE 2
+#define ADC_ADDRESS0 0x00
+#define ADC_ADDRESS1 0x08
+#define ADC_ADDRESS2 0x10
+#define ADC_ADDRESS3 0x18
+//Voltage devider
+#define ADC_ADDRESS4 0x20
+
+#define SPI_BUFF_SIZE 20
+// BUF size org. 2
 
 #define GPIO_1OE 10
 #define GPIO_2OE 71
@@ -50,14 +57,40 @@ static void nxtts_prepare_spi_message(void)
 {
 	spi_message_init(&nxtts_ctl.msg);
 
-	nxtts_ctl.tx_buff[0] = ADC_ADDRESS;
+	nxtts_ctl.tx_buff[0] = ADC_ADDRESS0;
 	nxtts_ctl.tx_buff[1] = 0x00;
+	nxtts_ctl.tx_buff[2] = ADC_ADDRESS0;
+	nxtts_ctl.tx_buff[3] = 0x00;
+	
+	
+	nxtts_ctl.tx_buff[4] = ADC_ADDRESS1;
+	nxtts_ctl.tx_buff[5] = 0x00;
+	nxtts_ctl.tx_buff[6] = ADC_ADDRESS1;
+	nxtts_ctl.tx_buff[7] = 0x00;
+
+
+	nxtts_ctl.tx_buff[8] = ADC_ADDRESS2;
+	nxtts_ctl.tx_buff[9] = 0x00;
+	nxtts_ctl.tx_buff[10] = ADC_ADDRESS2;
+	nxtts_ctl.tx_buff[11] = 0x00;
+		
+
+	nxtts_ctl.tx_buff[12] = ADC_ADDRESS3;
+	nxtts_ctl.tx_buff[13] = 0x00;
+	nxtts_ctl.tx_buff[14] = ADC_ADDRESS3;
+	nxtts_ctl.tx_buff[15] = 0x00;
+	
+
+	nxtts_ctl.tx_buff[16] = ADC_ADDRESS4;
+	nxtts_ctl.tx_buff[17] = 0x00;
+	nxtts_ctl.tx_buff[18] = ADC_ADDRESS4;
+	nxtts_ctl.tx_buff[19] = 0x00;
 	
 	memset(nxtts_ctl.rx_buff, 0, SPI_BUFF_SIZE);
 
 	nxtts_ctl.transfer.tx_buf = nxtts_ctl.tx_buff;
 	nxtts_ctl.transfer.rx_buf = nxtts_ctl.rx_buff;
-	nxtts_ctl.transfer.len = 2;
+	nxtts_ctl.transfer.len = 20;
 
 	spi_message_add_tail(&nxtts_ctl.transfer, &nxtts_ctl.msg);
 }
@@ -91,7 +124,17 @@ static ssize_t nxtts_read(struct file *filp, char __user *buff, size_t count, lo
 		strcpy(nxtts_dev.user_buff, "spi_device->master is NULL\n");
 	else {
 		status = nxtts_do_one_message();
-		sprintf(nxtts_dev.user_buff, "Status: %d\nTX: %d %d\nRX: %d %d\n", nxtts_ctl.msg.status, nxtts_ctl.tx_buff[0], nxtts_ctl.tx_buff[1], nxtts_ctl.rx_buff[0], nxtts_ctl.rx_buff[1]);
+		sprintf(nxtts_dev.user_buff, "Status: %d\nADC0: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC1: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC2: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC3: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\nADC4: TX: %.2X %.2X %.2X %.2X   RX: %.2X %.2X %.2X %.2X\n", nxtts_ctl.msg.status, 
+nxtts_ctl.tx_buff[0], nxtts_ctl.tx_buff[1],nxtts_ctl.tx_buff[2],nxtts_ctl.tx_buff[3], 
+nxtts_ctl.rx_buff[0], nxtts_ctl.rx_buff[1],nxtts_ctl.rx_buff[2],nxtts_ctl.rx_buff[3],
+nxtts_ctl.tx_buff[4], nxtts_ctl.tx_buff[5],nxtts_ctl.tx_buff[6],nxtts_ctl.tx_buff[7], 
+nxtts_ctl.rx_buff[4], nxtts_ctl.rx_buff[5],nxtts_ctl.rx_buff[6],nxtts_ctl.rx_buff[7],
+nxtts_ctl.tx_buff[8], nxtts_ctl.tx_buff[9],nxtts_ctl.tx_buff[10],nxtts_ctl.tx_buff[11], 
+nxtts_ctl.rx_buff[8], nxtts_ctl.rx_buff[9],nxtts_ctl.rx_buff[10],nxtts_ctl.rx_buff[11],
+nxtts_ctl.tx_buff[12], nxtts_ctl.tx_buff[13],nxtts_ctl.tx_buff[14],nxtts_ctl.tx_buff[15], 
+nxtts_ctl.rx_buff[12], nxtts_ctl.rx_buff[13],nxtts_ctl.rx_buff[14],nxtts_ctl.rx_buff[15],
+nxtts_ctl.tx_buff[16], nxtts_ctl.tx_buff[17],nxtts_ctl.tx_buff[18],nxtts_ctl.tx_buff[19],
+nxtts_ctl.rx_buff[16], nxtts_ctl.rx_buff[17],nxtts_ctl.rx_buff[18],nxtts_ctl.rx_buff[19]);
 	}
 
 	len = strlen(nxtts_dev.user_buff);
@@ -311,11 +354,6 @@ static int __init nxtts_init_class(void)
 
 static int __init nxtts_init_level_shifters(void) {
 
-gpio_request(74, "SCL4");
-gpio_direction_output(74,0);
-gpio_request(73, "SCL1");
-gpio_direction_output(73,1);  
-
 if (gpio_request(GPIO_1OE, "SPI1OE")) {
     printk(KERN_ALERT "gpio_request failed for SPI1OE\n");
     goto init_pins_fail_1;
@@ -411,9 +449,6 @@ static void __exit nxtts_exit(void)
 	/* Release spi level shifter pins */
 	gpio_free(GPIO_2OE);
 	gpio_free(GPIO_1OE);
-
-gpio_free(74);
-gpio_free(73);
 
 }
 module_exit(nxtts_exit);
