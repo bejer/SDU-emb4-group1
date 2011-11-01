@@ -140,7 +140,7 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
     return -EFAULT;
 
   if (*offp > 0){
-    printk(KERN_DEBUG "offp: %d",*offp); 
+    printk(KERN_DEBUG "offp: %lld",*offp); 
     return 0;
   }
   if (!adc_dev.spi_device)
@@ -360,6 +360,7 @@ static int __init init_cdev(void)
 
 static int __init init_class(void)
 {
+  int j;
   int i;
 
   adc_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
@@ -381,14 +382,12 @@ static int __init init_class(void)
   return 0;
 
  failed_device_creation:
-  int j;
   for (j = i-1; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
 
   class_destroy(adc_dev.class);
   return -1;
-
 }
 
 static int __init init_level_shifters(void) {
@@ -427,8 +426,10 @@ static int __init init_level_shifters(void) {
   return -1;
 }
 
-static int __init init(void)
+static int __init adc_init(void)
 {
+  int j;
+
   memset(&adc_dev, 0, sizeof(adc_dev));
   memset(&spi_ctl, 0, sizeof(spi_ctl));
 
@@ -452,7 +453,6 @@ static int __init init(void)
   gpio_free(GPIO_1OE);
 
  fail_3:
-  int j;
   for (j = NO_ADC_CHANNELS; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
@@ -465,14 +465,14 @@ static int __init init(void)
  fail_1:
   return -1;
 }
-module_init(init);
+module_init(adc_init);
 
-static void __exit exit(void)
+static void __exit adc_exit(void)
 {
+  int j;
+
   spi_unregister_driver(&spi_driver);
 
-
-  int j;
   for (j = NO_ADC_CHANNELS; j >= 0; --j) {
     device_destroy(adc_dev.class, MKDEV(MAJOR(adc_dev.devt), j));
   }
@@ -495,7 +495,7 @@ static void __exit exit(void)
   gpio_free(GPIO_1OE);
 
 }
-module_exit(exit);
+module_exit(adc_exit);
 MODULE_AUTHOR("Group1");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.1");
