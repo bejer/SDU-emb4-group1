@@ -19,6 +19,8 @@ build:
 	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/leddev; make; make install)
 	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/nxtts; make; make install)
 	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/adc; make; make install)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/adc_test; make; make install)
+
 
 archive: build
 	(cd $(home); rm export.tgz; cd export; tar --exclude '*.svn*' --exclude '.gitignore' -zcvf ../export.tgz .)
