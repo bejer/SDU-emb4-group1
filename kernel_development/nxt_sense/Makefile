@@ -3,8 +3,8 @@ export := /home/michael/Temp/SDU-emb4-group1
 NAME := nxt_sense
 
 ifneq ($(KERNELRELEASE),)
-	obj-m := $(NAME).o
-	$(NAME)-objs := touch.o
+	obj-m := nxt_sense.o
+	nxt_sense-objs := touch.o
 else
     PWD := $(shell pwd)
 
