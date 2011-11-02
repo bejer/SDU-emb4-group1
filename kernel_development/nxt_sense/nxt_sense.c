@@ -122,7 +122,7 @@ static int __init nxt_sense_init_class(void)
     return -1;
   }
 
-  if (device_create_file(nxt_sense.device, dev_attr_nxt_sense)) {
+  if (device_create_file(nxt_sense_dev.device, &dev_attr_nxt_sense)) {
     printk("device_create_file error: -EXISTS (hardcoded)");
     class_destroy(nxt_sense_dev.class);
     device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
@@ -155,7 +155,7 @@ module_init(nxt_sense_init);
 
 static void __exit nxt_sense_exit(void)
 {
-  device_remove_file(nxt_sense_dev.device, dev_attr_nxt_sense);
+  device_remove_file(nxt_sense_dev.device, &dev_attr_nxt_sense);
   device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
   class_destroy(nxt_sense_dev.class);
 
