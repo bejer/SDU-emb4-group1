@@ -33,48 +33,22 @@ static ssize_t nxt_sense_show(struct device *dev, struct device_attribute *attr,
 static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
   printk("nxt_sense_store: %s\n", buf);
 
+  int p1, p2, p3, p4;
+  int res;
+
+  res = sscanf(buf, "%d %d %d %d", &p1, &p2, &p3, &p4);
+
+  if (res != 4) {
+    printk("nxt_sense: sysfs input was not four integers!\n");
+  } else {
+    printk("nxt_sense: sysfs input: %d %d %d %d\n", p1, p2, p3, p4);
+  }
+
   return count;
 }
 
-DEVICE_ATTR(nxt_sense, 0600, nxt_sense_show, nxt_sense_store);
+device_ATTR(nxt_sense, 0600, nxt_sense_show, nxt_sense_store);
 
-#if 0
-static ssize_t nxt_sense_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
-{
-  size_t len;
-  ssize_t status = 0;
-
-  int sample_value;
-  int adc_sample_status;
-
-  if (!buff) 
-    return -EFAULT;
-
-  if (*offp > 0){
-    printk(KERN_DEBUG "offp: %lld",*offp); 
-    return 0;
-  }
-	
-  adc_sample_status = adc_sample_channel(1, &sample_value);
-
-  sprintf(nxt_sense_dev.user_buff, "ADC status: %d\nValue: %d\n", adc_sample_status, sample_value);
-
-  len = strlen(nxt_sense_dev.user_buff);
- 
-  if (len < count) 
-    count = len;
-
-  if (copy_to_user(buff, nxt_sense_dev.user_buff, count))  {
-    printk(KERN_DEBUG "nxt_sense_read(): copy_to_user() failed\n");
-    status = -EFAULT;
-  } else {
-    *offp += count;
-    status = count;
-  }
-
-  return status;	
-}
-#endif
 static const struct file_operations nxt_sense_fops = {
   .owner =	THIS_MODULE,
 };
