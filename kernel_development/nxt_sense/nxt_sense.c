@@ -204,6 +204,7 @@ static int __init nxt_sense_init_class(void)
 
 static int __init nxt_sense_init(void)
 {
+  printk("Inside nxt_sense_init\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
 
   if (nxt_sense_init_cdev() < 0) 
