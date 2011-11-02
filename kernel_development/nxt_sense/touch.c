@@ -1,7 +1,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 
-#include "touch.h"
+//#include "touch.h"
 
 //#include "nxt_sense.h"
 
