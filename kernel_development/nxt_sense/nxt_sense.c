@@ -25,6 +25,19 @@ struct nxt_sense_dev {
 
 static struct nxt_sense_dev nxt_sense_dev;
 
+static ssize_t nxt_sense_show(struct device *dev, struct device_attribute *attr, char *buf) {
+  
+  return scnprintf(buf, PAGE_SIZE, "Hello world\n");
+}
+
+static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
+  printk("nxt_sense_store: %s\n", buf);
+
+  return count;
+}
+
+DEVICE_ATTR(nxt_sense, 0600, nxt_sense_show, nxt_sense_store);
+
 #if 0
 static ssize_t nxt_sense_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
 {
@@ -109,6 +122,13 @@ static int __init nxt_sense_init_class(void)
     return -1;
   }
 
+  if (device_create_file(nxt_sense.device, dev_attr_nxt_sense)) {
+    printk("device_create_file error: -EXISTS (hardcoded)");
+    class_destroy(nxt_sense_dev.class);
+    device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
+    return -1;
+  }
+
   return 0;
 }
 
@@ -135,6 +155,7 @@ module_init(nxt_sense_init);
 
 static void __exit nxt_sense_exit(void)
 {
+  device_remove_file(nxt_sense_dev.device, dev_attr_nxt_sense);
   device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
   class_destroy(nxt_sense_dev.class);
 
