@@ -11,12 +11,15 @@
 
 #include "../adc/adc.h"
 
+#include "sensors/touch/touch.h"
+
 #define DEVICE_NAME "nxt_sense"
 
 #define NUMBER_OF_DEVICES 1
 
 #define NUMBER_OF_PORTS 4
 
+#define NONWORKING_PORT_CODE -1
 #define NONE_CODE 0
 #define TOUCH_CODE 1
 #define LIGHT_CODE 2
@@ -33,15 +36,62 @@ struct nxt_sense_dev {
 
 static struct nxt_sense_dev nxt_sense_dev;
 
-static int load_nxt_sensor(int sensor_code) {
-  return 0;
+static int load_nxt_sensor(int sensor_code, int port) {
+  int status = 0;
+
+  switch (sensor_code) {
+  case NONE_CODE:
+    /* Do nothing */
+    break;
+  case TOUCH_CODE:
+    add_touch_sensor(port);
+    break;
+  case LIGHT_CODE:
+    
+    break;
+  case NONWORKING_PORT_CODE:
+    /* Should it output that there is a bug in the code? */
+    printk("nxt_sense internal error: Trying to load a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
+    status = -1;
+    break;
+  default:
+    /* Error... */
+    printk(KERN_ALERT "nxt_sense: Loading unknown sensor port code!: %d\n", sensor_code);
+    status = -1;
+  }
+
+  return status;
 }
 
-static int unload_nxt_sensor(int sensor_code) {
-  return 0;
+static int unload_nxt_sensor(int sensor_code, int port) {
+  int status = 0;
+
+  switch (sensor_code) {
+  case NONE_CODE:
+    /* Do nothing */
+    break;
+  case TOUCH_CODE:
+    remove_touch_sensor(port);
+    break;
+  case LIGHT_CODE:
+    
+    break;
+  case NONWORKING_PORT_CODE:
+    /* Should it output that there is a bug in the code? */
+    printk("nxt_sense internal error: Trying to unload a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
+    status = -1;
+    break;
+  default:
+    /* Error... */
+    printk(KERN_ALERT "nxt_sense: Unloading unknown sensor port code!: %d\n", sensor_code);
+    status = -1;
+  }
+
+  return status;
 }
 
 static int update_port_cfg(int cfg[]) {
+  int res;
   int i;
   for (i = 0; i < NUMBER_OF_PORTS; ++i) {
     if (cfg[i] < NONE_CODE || cfg[i] > MAX_SENSOR_CODE) {
@@ -50,12 +100,23 @@ static int update_port_cfg(int cfg[]) {
   }
 
   for (i = 0; i < NUMBER_OF_PORTS; ++i) {
-    if (nxt_sense_dev.port_cfg[i] != cfg[i]) {
-      unload_nxt_sensor(nxt_sense_dev.port_cfg[i]);
-      load_nxt_sensor(cfg[i]);
+    if (nxt_sense_dev.port_cfg[i] != cfg[i] && nxt_sense_dev.port_cfg[i] != NONWORKING_PORT_CODE) {
+      res = unload_nxt_sensor(nxt_sense_dev.port_cfg[i], i);
+      if (res != 0) {
+	nxt_sense_dev.port_cfg[i] = NONWORKING_PORT_CODE;
+	continue;
+      }
+
+      res = load_nxt_sensor(cfg[i], i);
+      if (res != 0) {
+	nxt_sense_dev.port_cfg[i] = NONWORKING_PORT_CODE;
+	continue;
+      }
+
       nxt_sense_dev.port_cfg[i] = cfg[i];
     }
   }
+
 
   return 0;
 }
