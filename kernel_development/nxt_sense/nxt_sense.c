@@ -11,7 +11,7 @@
 
 #include "../adc/adc.h"
 
-#include "sensors/touch/touch.h"
+#include "touch.h"
 
 #define DEVICE_NAME "nxt_sense"
 
