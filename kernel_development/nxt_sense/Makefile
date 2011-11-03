@@ -1,9 +1,9 @@
 # cross-compile module makefile
-NAME := nxt_sense
+NAME := nxt_sense_mod
 
 ifneq ($(KERNELRELEASE),)
-	obj-m := nxt_sense.o
-	nxt_sense-objs := touch.o
+	obj-m := nxt_sense_mod.o
+	nxt_sense_mod-objs := nxt_sense.o touch.o
 else
     PWD := $(shell pwd)
 
