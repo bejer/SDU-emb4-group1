@@ -1,3 +1,7 @@
+/* TODO:
+ * Make the port numbers (0-3 or 1-4) work correctly with the minor number that is given to the nxt_sense char device!!!
+ */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -9,14 +13,17 @@
 #include <linux/string.h>
 #include <asm/uaccess.h>
 
+/* Better setup of the dependencies */
 #include "../adc/adc.h"
 
+/* All these submodules includes and parsers? could be set in a single h file for that purpose */
 #include "touch.h"
 
 #define DEVICE_NAME "nxt_sense"
 
-#define NUMBER_OF_DEVICES 1
+#define NUMBER_OF_DEVICES 5
 
+#define PORT_MIN 1
 #define NUMBER_OF_PORTS 4
 
 #define NONWORKING_PORT_CODE -1
@@ -24,6 +31,8 @@
 #define TOUCH_CODE 1
 #define LIGHT_CODE 2
 #define MAX_SENSOR_CODE LIGHT_CODE
+
+static const char *sensor_names[] = {NULL, "touch", "light"};
 
 struct nxt_sense_dev {
   dev_t devt;
@@ -34,7 +43,39 @@ struct nxt_sense_dev {
   int port_cfg[NUMBER_OF_PORTS];
 };
 
+struct nxt_sensor_dev {
+  struct cdev cdev;
+  struct device *device;
+};
+
 static struct nxt_sense_dev nxt_sense_dev;
+static struct nxt_sensor_dev nxt_sensor_dev[NUMBER_OF_PORTS];
+
+static bool valid_port(int port) {
+  bool res = false;
+  if (port >= PORT_MIN && port < (PORT_MIN + NUMBER_OF_PORTS))
+    res = true;
+
+  return res;
+}
+
+static char const *get_sensor_name(int port) {
+  int sensor_code;
+
+  if (!valid_port(port)) {
+    return NULL;
+  }
+
+  sensor_code = nxt_sense_dev.port_cfg[port];
+
+  if (sensor_code > NONE_CODE && sensor_code <= MAX_SENSOR_CODE) {
+    return sensor_names[sensor_code];
+  } else {
+    printk(KERN_ALERT DEVICE_NAME ": There is no named sensor on port %d\n", port);
+  }
+
+  return NULL;
+}
 
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
@@ -88,6 +129,32 @@ static int unload_nxt_sensor(int sensor_code, int port) {
   }
 
   return status;
+}
+
+/* Hook to be called from the sensor submodules */
+int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) {
+  int error;
+
+  if (!valid_port(port)) {
+    return -1;
+  }
+
+  cdev_init(&nxt_sensor_dev[port].cdev, fops);
+  
+  error = cdev_add(&nxt_sensor_dev[port].cdev, MKDEV(MAJOR(nxt_sense_dev.devt), port), 1);
+  if (error) {
+    printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", get_sensor_name(port), error);
+    return -1;
+  }
+
+  nxt_sensor_dev[port].device = device_create(nxt_sense_dev.class, nxt_sense_dev.device, MKDEV(MAJOR(nxt_sense_dev.devt), port), NULL, "%s%d", get_sensor_name(port), port);
+  if (IS_ERR(nxt_sensor_dev[port].device)) {
+    printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s: %ld", DEVICE_NAME, PTR_ERR(nxt_sensor_dev[port].device));
+    cdev_del(&nxt_sensor_dev[port].cdev);
+    return -1;
+  }
+
+  return 0;
 }
 
 static int update_port_cfg(int cfg[]) {
