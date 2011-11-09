@@ -136,6 +136,9 @@ static int unload_nxt_sensor(int sensor_code, int port) {
 }
 
 /* Hook to be called from the sensor submodules */
+/* NOTE: These functions sould not be called outside load and unload nxt_modules.... */
+/* NOTE: Should the majority of this code be placed in the drivers? eventhough it will be the same for all drivers - how about giving them the responsibility of creating extra devices and destroying them together with sysfs entries */
+/* NOTE: should give access to the nxt_sensor_dev[port].device pointer for creating sysfs entries */
 int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) {
   int error;
 
@@ -157,6 +160,17 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) 
     cdev_del(&nxt_sensor_dev[port].cdev);
     return -1;
   }
+
+  return 0;
+}
+
+int nxt_teardown_sensor_chrdev(const int port) {
+  if (!valid_port(port)) {
+    return -1;
+  }
+
+  device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), port));
+  cdev_del(&nxt_sensor_dev[port].cdev);
 
   return 0;
 }

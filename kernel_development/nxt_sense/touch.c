@@ -50,13 +50,16 @@ int add_touch_sensor(int port) {
 
   printk("init_touch_sensor res: %d\n", res);
 
-  return 0;
+  return res;
 }
 
 int remove_touch_sensor(int port) {
+  int res;
   printk("Inside remove_touch_sensor\n");
 
-  return 0;
+  res = nxt_teardown_sensor_chrdev(port);
+
+  return res;
 }
 
 MODULE_LICENSE("GPL");
