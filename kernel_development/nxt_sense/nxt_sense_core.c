@@ -89,7 +89,7 @@ static int load_nxt_sensor(int sensor_code, int port) {
     /* Do nothing */
     break;
   case TOUCH_CODE:
-    add_touch_sensor(port);
+    status = add_touch_sensor(port);
     break;
   case LIGHT_CODE:
     
@@ -105,6 +105,12 @@ static int load_nxt_sensor(int sensor_code, int port) {
     status = -1;
   }
 
+  if(status <= 0){
+    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE;
+  } else {
+    nxt_sense_dev.port_cfg[port] = sensor_code;
+  }
+
   return status;
 }
 
@@ -116,7 +122,7 @@ static int unload_nxt_sensor(int sensor_code, int port) {
     /* Do nothing */
     break;
   case TOUCH_CODE:
-    remove_touch_sensor(port);
+    status = remove_touch_sensor(port);
     break;
   case LIGHT_CODE:
     
@@ -130,6 +136,12 @@ static int unload_nxt_sensor(int sensor_code, int port) {
     /* Error... */
     printk(KERN_ALERT "nxt_sense: Unloading unknown sensor port code!: %d\n", sensor_code);
     status = -1;
+  }
+
+  if(status <= 0){
+    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE;
+  } else {
+    nxt_sense_dev.port_cfg[port] = 0;
   }
 
   return status;
@@ -164,6 +176,7 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) 
 static int update_port_cfg(int cfg[]) {
   int res;
   int i;
+  int error_occurred = 0;
   for (i = 0; i < NUMBER_OF_PORTS; ++i) {
     if (cfg[i] < NONE_CODE || cfg[i] > MAX_SENSOR_CODE) {
       return -1;
@@ -174,16 +187,13 @@ static int update_port_cfg(int cfg[]) {
     if (nxt_sense_dev.port_cfg[i] != cfg[i] && nxt_sense_dev.port_cfg[i] != NONWORKING_PORT_CODE) {
       res = unload_nxt_sensor(nxt_sense_dev.port_cfg[i], i);
       if (res != 0) {
-	nxt_sense_dev.port_cfg[i] = NONWORKING_PORT_CODE;
+        error_occurred = -2;
 	continue;
       }
 
-      // If not loading a new sensor driver then reset the port_cfg[i] to 0
-      nxt_sense_dev.port_cfg[i] = cfg[i];
-
       res = load_nxt_sensor(cfg[i], i);
       if (res != 0) {
-	nxt_sense_dev.port_cfg[i] = NONWORKING_PORT_CODE;
+	error_occurred = -2;
 	continue;
       }
 
@@ -191,7 +201,7 @@ static int update_port_cfg(int cfg[]) {
   }
 
 
-  return 0;
+  return error_occurred;
 }
 
 static ssize_t nxt_sense_show(struct device *dev, struct device_attribute *attr, char *buf) {
