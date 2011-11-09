@@ -79,7 +79,7 @@ static char const *get_sensor_name(int port) {
 
   return NULL;
 }
-
+/* NOTE: should have a precondition/check of whether or not the sensor_code on the specified port is 0 (available) */
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
 
@@ -113,6 +113,7 @@ static int load_nxt_sensor(int sensor_code, int port) {
   return status;
 }
 
+/* NOTE: Should have a precondition/check that takes care of handling cases where the sensor code is NONE_CODE (no devices allocated/created/assigned) */
 static int unload_nxt_sensor(int sensor_code, int port) {
   int status = 0;
 
