@@ -79,9 +79,11 @@ static char const *get_sensor_name(int port) {
 
   return NULL;
 }
-
+/* NOTE: should have a precondition/check of whether or not the sensor_code on the specified port is 0 (available) */
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
+
+  nxt_sense_dev.port_cfg[port] = sensor_code;
 
   switch (sensor_code) {
   case NONE_CODE:
@@ -104,15 +106,14 @@ static int load_nxt_sensor(int sensor_code, int port) {
     status = -1;
   }
 
-  if(status <= 0){
-    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE;
-  } else {
-    nxt_sense_dev.port_cfg[port] = sensor_code;
+  if(status < 0){
+    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE; // Maybe just NONE_CODE since the adding tries to clean up for itself...
   }
 
   return status;
 }
 
+/* NOTE: Should have a precondition/check that takes care of handling cases where the sensor code is NONE_CODE (no devices allocated/created/assigned) */
 static int unload_nxt_sensor(int sensor_code, int port) {
   int status = 0;
 
@@ -137,10 +138,10 @@ static int unload_nxt_sensor(int sensor_code, int port) {
     status = -1;
   }
 
-  if(status <= 0){
+  if(status < 0){
     nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE;
   } else {
-    nxt_sense_dev.port_cfg[port] = 0;
+    nxt_sense_dev.port_cfg[port] = NONE_CODE;
   }
 
   return status;
@@ -236,7 +237,7 @@ static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr
 
     status = update_port_cfg(p);
     if (status != 0) {
-      printk(KERN_ALERT DEVICE_NAME ": error from update_port_cfg(%d): %d\n", p, status);
+      printk(KERN_ALERT DEVICE_NAME ": error from update_port_cfg([%d] [%d] [%d] [%d]): %d\n", p[0], p[1], p[2], p[3], status);
     }
   }
 
