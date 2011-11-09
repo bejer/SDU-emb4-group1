@@ -8,11 +8,23 @@
 
 //#include "nxt_sense.h"
 
+static int touch_open(struct inode *inode, struct file *filp) {
+  *filp->private_data = MINOR(inode->i_rdev);
+
+  return 0;
+}
+
 static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
 
-  const char *output = "This is touch data";
+  char output[6];
+  int data = 0;
+  int status_sampling;
+
+  status_sampling = get_sample(*filp->private_data, &data);
+
+  snprintf(output, 6, "%4.d\n", data);
 
   if (!buff)
     return -EFAULT;
@@ -36,10 +48,10 @@ static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, lo
   return status;
 }
 
-
 static const struct file_operations touch_fops = {
   .owner = THIS_MODULE,
   .read = touch_read,
+  .open = touch_open,
 };
 
 int add_touch_sensor(int port) {

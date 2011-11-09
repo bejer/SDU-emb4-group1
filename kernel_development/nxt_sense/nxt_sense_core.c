@@ -187,6 +187,23 @@ int nxt_teardown_sensor_chrdev(const int port) {
   return 0;
 }
 
+/* NOTE: Handle the channels accordingly to the port - lucky that it fits right now, but should be made more dynamically / robust */
+int get_sample(const int port, int *data) {
+  int status;
+
+  if (!valid_port(port)) {
+    return -1;
+  }
+
+  status = adc_sample_channel(port, data);
+
+  if (status != 0) {
+    printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status);
+  }
+
+  return status;
+}
+
 static int update_port_cfg(int cfg[]) {
   int res;
   int i;
