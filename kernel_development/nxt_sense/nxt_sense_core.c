@@ -344,6 +344,9 @@ module_init(nxt_sense_init);
 
 static void __exit nxt_sense_exit(void)
 {
+  int p[NUMBER_OF_PORTS] = {0, 0, 0, 0};
+  update_port_cfg(p);
+
   device_remove_file(nxt_sense_dev.device, &dev_attr_nxt_sense);
   device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
   class_destroy(nxt_sense_dev.class);
