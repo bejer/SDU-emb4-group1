@@ -8,8 +8,14 @@
 
 //#include "nxt_sense.h"
 
+struct touch_data {
+  int port;
+};
+
+static struct touch_data touch_data[4];
+
 static int touch_open(struct inode *inode, struct file *filp) {
-  *filp->private_data = MINOR(inode->i_rdev);
+  filp->private_data = &touch_data[MINOR(inode->i_rdev)];
 
   return 0;
 }
@@ -21,8 +27,9 @@ static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, lo
   char output[6];
   int data = 0;
   int status_sampling;
+  struct touch_data *td = filp->private_data;
 
-  status_sampling = get_sample(*filp->private_data, &data);
+  status_sampling = get_sample(td->port, &data);
 
   snprintf(output, 6, "%4.d\n", data);
 
@@ -62,6 +69,8 @@ int add_touch_sensor(int port) {
 
   printk("init_touch_sensor res: %d\n", res);
 
+  touch_data[port].port = port;
+
   return res;
 }
 
@@ -70,6 +79,8 @@ int remove_touch_sensor(int port) {
   printk("Inside remove_touch_sensor\n");
 
   res = nxt_teardown_sensor_chrdev(port);
+
+  touch_data[port].port = -1;
 
   return res;
 }
