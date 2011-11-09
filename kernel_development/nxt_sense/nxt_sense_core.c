@@ -1,5 +1,5 @@
 /* TODO:
- * Make the port numbers (0-3 or 1-4) work correctly with the minor number that is given to the nxt_sense char device!!!
+ * Make the port numbers (0-3 or 1-4) work correctly with the minor number that is given to the nxt_sense char device!!! Future task: Make the port numbers able to run from an arbitrary number, such that it is not required to have minor numbers starting from 0.
  */
 
 #include <linux/init.h>
@@ -23,8 +23,10 @@
 
 #define NUMBER_OF_DEVICES 5
 
-#define PORT_MIN 1
+#define PORT_MIN 0
 #define NUMBER_OF_PORTS 4
+/* This requires the port_min to start from 0 unless the number_of_ports is incremented accordingly */
+#define NXT_SENSE_MINOR 4
 
 #define NONWORKING_PORT_CODE -1
 #define NONE_CODE 0
@@ -71,12 +73,14 @@ static char const *get_sensor_name(int port) {
   if (sensor_code > NONE_CODE && sensor_code <= MAX_SENSOR_CODE) {
     return sensor_names[sensor_code];
   } else {
-    printk(KERN_ALERT DEVICE_NAME ": There is no named sensor on port %d\n", port);
+    printk(KERN_ALERT DEVICE_NAME ": There is no named sensor on port %d, sensor_code = %d\n", port, sensor_code);
+    printk(KERN_ALERT DEVICE_NAME ": sensor_code [%d], [%d], [%d], [%d]\n", nxt_sense_dev.port_cfg[0], nxt_sense_dev.port_cfg[1], nxt_sense_dev.port_cfg[2], nxt_sense_dev.port_cfg[3]);
   }
 
   return NULL;
 }
 
+/* Load and unload nxt_sensor should take care of the logic of updating and controlling the port_cfg array */
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
 
@@ -174,13 +178,15 @@ static int update_port_cfg(int cfg[]) {
 	continue;
       }
 
+      // If not loading a new sensor driver then reset the port_cfg[i] to 0
+      nxt_sense_dev.port_cfg[i] = cfg[i];
+
       res = load_nxt_sensor(cfg[i], i);
       if (res != 0) {
 	nxt_sense_dev.port_cfg[i] = NONWORKING_PORT_CODE;
 	continue;
       }
 
-      nxt_sense_dev.port_cfg[i] = cfg[i];
     }
   }
 
@@ -232,10 +238,10 @@ static int __init nxt_sense_init_cdev(void)
   cdev_init(&nxt_sense_dev.cdev, &nxt_sense_fops);
   nxt_sense_dev.cdev.owner = THIS_MODULE;
 
-  error = cdev_add(&nxt_sense_dev.cdev, nxt_sense_dev.devt, 1);
+  error = cdev_add(&nxt_sense_dev.cdev, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR), 1);
   if (error) {
     printk(KERN_ALERT "cdev_add() failed: %d\n", error);
-    unregister_chrdev_region(nxt_sense_dev.devt, 1);
+    unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
     return -1;
   }	
 
@@ -251,7 +257,7 @@ static int __init nxt_sense_init_class(void)
     return -1;
   }
 
-  nxt_sense_dev.device = device_create(nxt_sense_dev.class, NULL, nxt_sense_dev.devt, NULL, DEVICE_NAME);
+  nxt_sense_dev.device = device_create(nxt_sense_dev.class, NULL, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR), NULL, DEVICE_NAME);
 
   if (IS_ERR(nxt_sense_dev.device)) {
     printk(KERN_ALERT "device_create(..., %s) failed: %ld\n", DEVICE_NAME, PTR_ERR(nxt_sense_dev.device));
@@ -262,7 +268,7 @@ static int __init nxt_sense_init_class(void)
   if (device_create_file(nxt_sense_dev.device, &dev_attr_nxt_sense)) {
     printk("device_create_file error: -EXISTS (hardcoded)");
     class_destroy(nxt_sense_dev.class);
-    device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
+    device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
     return -1;
   }
 
@@ -284,7 +290,7 @@ static int __init nxt_sense_init(void)
 
  fail_2:
   cdev_del(&nxt_sense_dev.cdev);
-  unregister_chrdev_region(nxt_sense_dev.devt, 1);
+  unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
 
  fail_1:
   return -1;
@@ -294,11 +300,11 @@ module_init(nxt_sense_init);
 static void __exit nxt_sense_exit(void)
 {
   device_remove_file(nxt_sense_dev.device, &dev_attr_nxt_sense);
-  device_destroy(nxt_sense_dev.class, nxt_sense_dev.devt);
+  device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
   class_destroy(nxt_sense_dev.class);
 
   cdev_del(&nxt_sense_dev.cdev);
-  unregister_chrdev_region(nxt_sense_dev.devt, 1);
+  unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
 }
 module_exit(nxt_sense_exit);
 MODULE_AUTHOR("Group1");
