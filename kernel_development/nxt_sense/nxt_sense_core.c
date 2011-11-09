@@ -80,7 +80,6 @@ static char const *get_sensor_name(int port) {
   return NULL;
 }
 
-/* Load and unload nxt_sensor should take care of the logic of updating and controlling the port_cfg array */
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
 
@@ -207,7 +206,7 @@ static int update_port_cfg(int cfg[]) {
 
       res = load_nxt_sensor(cfg[i], i);
       if (res != 0) {
-	error_occurred = -2;
+	error_occurred = -3;
 	continue;
       }
 
@@ -226,6 +225,7 @@ static ssize_t nxt_sense_show(struct device *dev, struct device_attribute *attr,
 static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
   int p[NUMBER_OF_PORTS];
   int res;
+  int status;
 
   res = sscanf(buf, "%d %d %d %d", &p[0], &p[1], &p[2], &p[3]);
 
@@ -234,7 +234,10 @@ static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr
   } else {
     printk("nxt_sense: sysfs input: %d %d %d %d\n", p[0], p[1], p[2], p[3]);
 
-    update_port_cfg(p);
+    status = update_port_cfg(p);
+    if (status != 0) {
+      printk(KERN_ALERT DEVICE_NAME ": error from update_port_cfg(%d): %d\n", p, status);
+    }
   }
 
   return count;
