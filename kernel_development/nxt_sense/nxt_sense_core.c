@@ -312,8 +312,8 @@ static int __init nxt_sense_init_class(void)
 
   if (device_create_file(nxt_sense_dev.device, &dev_attr_nxt_sense)) {
     printk("device_create_file error: -EXISTS (hardcoded)");
-    class_destroy(nxt_sense_dev.class);
     device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
+    class_destroy(nxt_sense_dev.class);
     return -1;
   }
 
