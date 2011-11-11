@@ -120,6 +120,7 @@ static void spi_prepare_message(int channel)
   spi_message_add_tail(&spi_ctl.transfer, &spi_ctl.msg);
 }
 
+/* Returns zero on success, else a negative error code */
 static int spi_do_message(int channel)
 {
   int status;
@@ -132,6 +133,7 @@ static int spi_do_message(int channel)
   return status;
 }
 
+/* Returns zero on success, else a negative error code */
 static int adc_sample_channel(int channel, int *data) {
   int status;
   int sample_value;
