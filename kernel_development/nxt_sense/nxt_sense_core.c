@@ -45,13 +45,42 @@ struct nxt_sense_dev {
   int port_cfg[NUMBER_OF_PORTS];
 };
 
-struct nxt_sensor_dev {
-  struct cdev cdev;
-  struct device *device;
-};
+/* struct nxt_sensor_dev { */
+/*   struct cdev cdev; */
+/*   struct device *device; */
+/* }; */
 
 static struct nxt_sense_dev nxt_sense_dev;
-static struct nxt_sensor_dev nxt_sensor_dev[NUMBER_OF_PORTS];
+//static struct nxt_sensor_dev nxt_sensor_dev[NUMBER_OF_PORTS];
+
+#define SAMPLE_FUNCTION(port, adc_channel)			\
+static int get_sample_##port(int &data) {	\
+  int status = 0;				\
+  status = adc_sample_channel(##adc_channel, data);	\
+						\
+  if (status != 0) {							\
+    printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status); \
+  }									\
+
+return status;					\
+}
+
+SAMPLE_FUNCTION(0, 0)
+SAMPLE_FUNCTION(1, 1)
+SAMPLE_FUNCTION(2, 2)
+SAMPLE_FUNCTION(3, 3)
+
+/* nxt_sense implements that there is a correspondence between port number and minor number for now, but keeps the implementation details like this in nxt_sense_core */
+static bool valid_devt(dev_t *devt) {
+  bool res = false;
+  if (MAJOR(*devt) == MAJOR(nxt_sense_dev.devt)) {
+    if (MINOR(*devt) >= PORT_MIN && MINOR(*devt) < (PORT_MIN + NUMBER_OF_PORTS)) {
+      res = true;
+    }
+  }
+
+  return res;
+}
 
 static bool valid_port(int port) {
   bool res = false;
@@ -148,41 +177,84 @@ static int unload_nxt_sensor(int sensor_code, int port) {
 }
 
 /* Hook to be called from the sensor submodules */
-/* NOTE: These functions sould not be called outside load and unload nxt_modules.... */
-/* NOTE: Should the majority of this code be placed in the drivers? eventhough it will be the same for all drivers - how about giving them the responsibility of creating extra devices and destroying them together with sysfs entries */
-/* NOTE: should give access to the nxt_sensor_dev[port].device pointer for creating sysfs entries */
-int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) {
+int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cdev, dev_t *devt, struct device *device, const char *name, int (*get_sample)(int *)) {
   int error;
 
-  if (!valid_port(port)) {
+  if (!valid_devt(devt)) {
     return -1;
   }
 
-  cdev_init(&nxt_sensor_dev[port].cdev, fops);
+  cdev_init(cdev, fops);
   
-  error = cdev_add(&nxt_sensor_dev[port].cdev, MKDEV(MAJOR(nxt_sense_dev.devt), port), 1);
+  error = cdev_add(cdev, *devt, 1);
   if (error) {
-    printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", get_sensor_name(port), error);
+    printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", name, error);
     return -1;
   }
 
-  nxt_sensor_dev[port].device = device_create(nxt_sense_dev.class, nxt_sense_dev.device, MKDEV(MAJOR(nxt_sense_dev.devt), port), NULL, "%s%d", get_sensor_name(port), port);
-  if (IS_ERR(nxt_sensor_dev[port].device)) {
-    printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s: %ld", DEVICE_NAME, PTR_ERR(nxt_sensor_dev[port].device));
-    cdev_del(&nxt_sensor_dev[port].cdev);
+  /* Having the first NULL replaced with nxt_sense_dev.device : what does it exactly do? */
+  device = device_create(nxt_sense_dev.class, NULL, *devt, NULL, "%s%d", name, MINOR(*devt)); /* When having port indexing MINOR(*devt) could be replaced by a port number... but is considered bad behaviour */
+  if (IS_ERR(device)) {
+    printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s%d: %ld", name, MINOR(*devt), PTR_ERR(device));
+    cdev_del(cdev);
     return -1;
+  }
+
+  switch (MINOR(*devt)) {
+  case 0:
+    get_sample = &get_sample_0;
+    break;
+  case 1:
+    get_sample = &get_sample_1;
+    break;
+  case 2:
+    get_sample = &get_sample_2;
+    break;
+  case 3:
+    get_sample = &get_sample_3;
+    break;
+  default:
+    printk(KERN_ALERT DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up sampling functions is incorrect - FIX ME NOW!\n");
   }
 
   return 0;
 }
 
-int nxt_teardown_sensor_chrdev(const int port) {
-  if (!valid_port(port)) {
+/* NOTE: These functions sould not be called outside load and unload nxt_modules.... */
+/* NOTE: Should the majority of this code be placed in the drivers? eventhough it will be the same for all drivers - how about giving them the responsibility of creating extra devices and destroying them together with sysfs entries */
+/* NOTE: should give access to the nxt_sensor_dev[port].device pointer for creating sysfs entries */
+/* int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) { */
+/*   int error; */
+
+/*   if (!valid_port(port)) { */
+/*     return -1; */
+/*   } */
+
+/*   cdev_init(&nxt_sensor_dev[port].cdev, fops); */
+  
+/*   error = cdev_add(&nxt_sensor_dev[port].cdev, MKDEV(MAJOR(nxt_sense_dev.devt), port), 1); */
+/*   if (error) { */
+/*     printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", get_sensor_name(port), error); */
+/*     return -1; */
+/*   } */
+
+/*   nxt_sensor_dev[port].device = device_create(nxt_sense_dev.class, nxt_sense_dev.device, MKDEV(MAJOR(nxt_sense_dev.devt), port), NULL, "%s%d", get_sensor_name(port), port); */
+/*   if (IS_ERR(nxt_sensor_dev[port].device)) { */
+/*     printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s: %ld", DEVICE_NAME, PTR_ERR(nxt_sensor_dev[port].device)); */
+/*     cdev_del(&nxt_sensor_dev[port].cdev); */
+/*     return -1; */
+/*   } */
+
+/*   return 0; */
+/* } */
+
+int nxt_teardown_sensor_chrdev(struct cdev *cdev, dev_t *devt) {
+  if (!valid_devt(devt)) {
     return -1;
   }
 
-  device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), port));
-  cdev_del(&nxt_sensor_dev[port].cdev);
+  device_destroy(nxt_sense_dev.class, *devt);
+  cdev_del(cdev);
 
   return 0;
 }
@@ -312,8 +384,8 @@ static int __init nxt_sense_init_class(void)
 
   if (device_create_file(nxt_sense_dev.device, &dev_attr_nxt_sense)) {
     printk("device_create_file error: -EXISTS (hardcoded)");
-    class_destroy(nxt_sense_dev.class);
     device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
+    class_destroy(nxt_sense_dev.class);
     return -1;
   }
 
@@ -344,6 +416,9 @@ module_init(nxt_sense_init);
 
 static void __exit nxt_sense_exit(void)
 {
+  int p[NUMBER_OF_PORTS] = {0, 0, 0, 0};
+  update_port_cfg(p);
+
   device_remove_file(nxt_sense_dev.device, &dev_attr_nxt_sense);
   device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
   class_destroy(nxt_sense_dev.class);
