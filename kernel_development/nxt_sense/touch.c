@@ -64,6 +64,7 @@ static int touch_release(struct inode *inode, struct file *filp) {
   return 0;
 }
 
+/* The concurrency aware logic is in touch_open and touch_release */
 static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
@@ -220,6 +221,7 @@ int add_touch_sensor(int port, dev_t devt) {
   int error;
   printk("Inside init_touch_sensor\n");
 
+  mutex_init(&touch_data[port].mutex);
   mutex_lock(&touch_data[port].mutex); /* void, so sleeps until the lock is acquired? mutex_lock_interruptible returns an error indicating it was interrupted... */
     
 
@@ -233,6 +235,7 @@ int add_touch_sensor(int port, dev_t devt) {
   touch_data[port].threshold = DEFAULT_THRESHOLD;
 
   error = init_sysfs(&touch_data[port]);
+  mutex_unlock(&touch_data[port].mutex);
   if (error != 0) {
     /* error .... handle this correct */
     return -1;
@@ -242,6 +245,8 @@ int add_touch_sensor(int port, dev_t devt) {
 }
 
 int uninitialise_touch_data(struct touch_data *td) {
+  mutex_destroy(&td->mutex);
+
   return 0;
 }
 
