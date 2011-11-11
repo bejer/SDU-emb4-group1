@@ -11,6 +11,10 @@
 #define DEFAULT_THRESHOLD 2048
 
 struct touch_data {
+  dev_t devt;
+  struct cdev cdev;
+  struct device *device;
+  int (*get_sample)(int *);
   int port;
   int threshold;
 };
@@ -19,7 +23,11 @@ static struct touch_data touch_data[4];
 
 /* NOTE: Hardcoded correlation between minor numbers and ports!!!! */
 static int touch_open(struct inode *inode, struct file *filp) {
-  filp->private_data = &touch_data[MINOR(inode->i_rdev)];
+  struct touch_data *touch_data;
+
+  touch_data = container_of(inode->i_cdev, struct touch_data, cdev);
+
+  filp->private_data = touch_data;
 
   return 0;
 }
@@ -75,7 +83,7 @@ int add_touch_sensor(int port) {
   int res;
   printk("Inside init_touch_sensor\n");
 
-  res = nxt_setup_sensor_chrdev(&touch_fops, port);
+  res = nxt_setup_sensor_chrdev(&touch_fops, &touch_data[port].cdev, &touch_data[port].devt, "touch", &touch_data[port].device, &touch_data[port].get_sample);
 
   printk("init_touch_sensor res: %d\n", res);
 
@@ -89,7 +97,7 @@ int remove_touch_sensor(int port) {
   int res;
   printk("Inside remove_touch_sensor\n");
 
-  res = nxt_teardown_sensor_chrdev(port);
+  res = nxt_teardown_sensor_chrdev(&touch_data[port].cdev, &touch_data[port].devt);
 
   touch_data[port].port = -1;
 
