@@ -8,6 +8,7 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/kernel.h>
+#include <linux/mutex.h>
 
 #include "touch.h"
 
@@ -27,21 +28,43 @@ struct touch_data {
   int (*get_sample)(int *);
   int port;
   int threshold;
+  struct mutex mutex;
 };
 
 static struct touch_data touch_data[4];
 
-/* NOTE: Hardcoded correlation between minor numbers and ports!!!! */
+bool obtain_nonblocking_lock(struct mutex *mutex) {
+  if (mutex_trylock(mutex)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 static int touch_open(struct inode *inode, struct file *filp) {
-  struct touch_data *touch_data;
+  struct touch_data *td;
 
-  touch_data = container_of(inode->i_cdev, struct touch_data, cdev);
+  td = container_of(inode->i_cdev, struct touch_data, cdev);
 
-  filp->private_data = touch_data;
+  if (!mutex_trylock(&td->mutex)) {
+    return -EBUSY;
+  }
+
+  filp->private_data = td;
 
   return 0;
 }
 
+static int touch_release(struct inode *inode, struct file *filp) {
+  struct touch_data *td;
+  td = container_of(inode->i_cdev, struct touch_data, cdev);
+
+  mutex_unlock(&td->mutex);
+
+  return 0;
+}
+
+/* The concurrency aware logic is in touch_open and touch_release */
 static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
@@ -85,10 +108,19 @@ static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, lo
 }
 
 static ssize_t threshold_show(struct device *dev, struct device_attribute *attr, char *buf) {
+  int threshold;
   struct touch_data *td;
   td = container_of(attr, struct touch_data, dev_attr_threshold);
 
-  return scnprintf(buf, PAGE_SIZE, "%d\n", td->threshold);
+  if (!mutex_trylock(&td->mutex)) {
+    return -EBUSY;
+  }
+
+  threshold = td->threshold;
+
+  mutex_unlock(&td->mutex);
+
+  return scnprintf(buf, PAGE_SIZE, "%d\n", threshold);
 }
 
 static ssize_t threshold_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
@@ -102,7 +134,13 @@ static ssize_t threshold_store(struct device *dev, struct device_attribute *attr
   if (res != 1) {
     printk(KERN_ALERT DEVICE_NAME "%d: wrong sysfs input for threshold, only takes a value for the threshold\n", MINOR(td->devt));
   } else {
+    if (!mutex_trylock(&td->mutex)) {
+      return -EBUSY;
+    }
+    
     td->threshold = new_threshold;
+    
+    mutex_unlock(&td->mutex);
   }
 
   return count;
@@ -117,7 +155,13 @@ static ssize_t raw_sample_show(struct device *dev, struct device_attribute *attr
   struct touch_data *td;
   td = container_of(attr, struct touch_data, dev_attr_raw_sample);
 
+  if (mutex_trylock(&td->mutex)) {
+    return -EBUSY;
+  }
+
   status = td->get_sample(&sample);
+
+  mutex_unlock(&td->mutex);
 
   if (status != 0) {
     printk(KERN_ALERT DEVICE_NAME "%d: error trying to get a sample: %d\n", MINOR(td->devt), status);
@@ -176,6 +220,11 @@ int add_touch_sensor(int port, dev_t devt) {
   int res;
   int error;
   printk("Inside init_touch_sensor\n");
+
+  mutex_init(&touch_data[port].mutex);
+  mutex_lock(&touch_data[port].mutex); /* void, so sleeps until the lock is acquired? mutex_lock_interruptible returns an error indicating it was interrupted... */
+    
+
   touch_data[port].devt = devt;
 
   res = nxt_setup_sensor_chrdev(&touch_fops, &touch_data[port].cdev, &touch_data[port].devt, &touch_data[port].device, DEVICE_NAME, &touch_data[port].get_sample);
@@ -186,6 +235,7 @@ int add_touch_sensor(int port, dev_t devt) {
   touch_data[port].threshold = DEFAULT_THRESHOLD;
 
   error = init_sysfs(&touch_data[port]);
+  mutex_unlock(&touch_data[port].mutex);
   if (error != 0) {
     /* error .... handle this correct */
     return -1;
@@ -195,6 +245,8 @@ int add_touch_sensor(int port, dev_t devt) {
 }
 
 int uninitialise_touch_data(struct touch_data *td) {
+  mutex_destroy(&td->mutex);
+
   return 0;
 }
 
