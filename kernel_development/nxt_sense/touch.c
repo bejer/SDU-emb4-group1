@@ -177,6 +177,7 @@ static const struct file_operations touch_fops = {
   .owner = THIS_MODULE,
   .read = touch_read,
   .open = touch_open,
+  .release = touch_release,
 };
 
 int init_sysfs(struct touch_data *td) {
