@@ -1,5 +1,5 @@
 ifneq ($(KERNELRELEASE),)
-	obj-m := adc/ adc_test/ nxt_sense/
+	obj-m := adc/ adc_test/ nxt_sense/ level_shifter/ level_shifter_test/
 else
 	PWD := $(shell pwd)
 
