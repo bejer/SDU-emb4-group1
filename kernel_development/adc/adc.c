@@ -380,7 +380,7 @@ static int __init init_class(void)
   adc_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
 
   if (IS_ERR(adc_dev.class)) {
-    printk(KERN_ALERT "class_create(%s) failed: %ld\n", DEVICE_NAME, PTR_ERR(adc_dev.class));
+    printk(KERN_ALERT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(adc_dev.class));
     return -1;
   }
 
