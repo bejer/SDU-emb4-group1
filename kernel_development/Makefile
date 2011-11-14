@@ -1,5 +1,5 @@
 ifneq ($(KERNELRELEASE),)
-	obj-m := adc/ adc_test/ nxt_sense/ level_shifter/
+	obj-m := adc/ adc_test/ nxt_sense/ level_shifter/ voltage_sensor/
 else
 	PWD := $(shell pwd)
 
@@ -16,3 +16,4 @@ install:
 	(cd adc_test; make install)
 	(cd nxt_sense; make install)
 	(cd level_shifter; make install)
+	(cd voltage_sensor; make install)
