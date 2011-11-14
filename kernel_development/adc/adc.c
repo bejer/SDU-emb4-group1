@@ -20,7 +20,7 @@
 #define SPI_BITS_PER_WORD 8
 #define DEVICE_NAME "gumnxtadc"
 
-// Should be 8
+/* It supports 8 channels, but only 5 channels are connected to something useful for now */
 #define NO_ADC_CHANNELS 5
 
 //Sensor1 ADC IN0
@@ -40,6 +40,7 @@
 
 #define SPI_BUFF_SIZE 4
 
+/* Level shifter gpio */
 #define GPIO_1OE 10
 
 #define number_of_devices 1
@@ -69,8 +70,7 @@ static struct adc_dev adc_dev;
 static struct adc_info adc_info;
 
 
-static void spi_prepare_message(int channel)
-{
+static void spi_prepare_message(int channel) {
   u8 adc_channel;
   spi_message_init(&spi_ctl.msg);
 
@@ -121,8 +121,7 @@ static void spi_prepare_message(int channel)
 }
 
 /* Returns zero on success, else a negative error code */
-static int spi_do_message(int channel)
-{
+static int spi_do_message(int channel) {
   int status;
 
   spi_prepare_message(channel);
@@ -151,13 +150,13 @@ static int adc_sample_channel(int channel, int *data) {
 
     *data = sample_value;
   }
+
   return status;
 }
 
 EXPORT_SYMBOL(adc_sample_channel);
 
-static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff_t *offp)
-{
+static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
   struct adc_info *adc_info = filp->private_data;
@@ -179,7 +178,7 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
   else if (adc_sample_status == SPI_MASTER_IS_NULL)
     strcpy(adc_dev.user_buff, "spi_device->master is NULL\n");
   else {
-    sprintf(adc_dev.user_buff, "%d\n", sample_value); // could also be outputted in hexadecimal %X
+    sprintf(adc_dev.user_buff, "%d\n", sample_value); /* could also be outputted in hexadecimal %X */
   }
 
   len = strlen(adc_dev.user_buff);
@@ -198,8 +197,7 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
   return status;	
 }
 
-static int adc_open(struct inode *inode, struct file *filp)
-{	
+static int adc_open(struct inode *inode, struct file *filp) {	
   //	int status = 0;
 
   adc_info.channel = MINOR(inode->i_rdev);
@@ -208,22 +206,19 @@ static int adc_open(struct inode *inode, struct file *filp)
   return 0;
 }
 
-static int adc_probe(struct spi_device *spi_device)
-{
+static int adc_probe(struct spi_device *spi_device) {
   adc_dev.spi_device = spi_device;
 
   return 0;
 }
 
-static int adc_remove(struct spi_device *spi_device)
-{
+static int adc_remove(struct spi_device *spi_device) {
   adc_dev.spi_device = NULL;
 
   return 0;
 }
 
-static int __init add_adc_device_to_bus(void)
-{
+static int __init add_adc_device_to_bus(void) {
   struct spi_master *spi_master;
   struct spi_device *spi_device;
   struct device *pdev;
@@ -294,8 +289,7 @@ static struct spi_driver spi_driver = {
   .remove = __devexit_p(adc_remove),	
 };
 
-static int __init init_spi(void)
-{
+static int __init init_spi(void) {
   int error;
 
   spi_ctl.tx_buff = kzalloc(SPI_BUFF_SIZE, GFP_KERNEL | GFP_DMA);
@@ -346,8 +340,7 @@ static const struct file_operations adc_fops = {
   .open =		adc_open,	
 };
 
-static int __init init_cdev(void)
-{
+static int __init init_cdev(void) {
   int error;
 
   adc_dev.devt = MKDEV(0, 0);
@@ -372,8 +365,7 @@ static int __init init_cdev(void)
   return 0;
 }
 
-static int __init init_class(void)
-{
+static int __init init_class(void) {
   int i;
   int j;
 
@@ -402,7 +394,6 @@ static int __init init_class(void)
 
   class_destroy(adc_dev.class);
   return -1;
-
 }
 
 static int __init init_level_shifters(void) {
@@ -437,8 +428,7 @@ static int __init init_level_shifters(void) {
   return -1;
 }
 
-static int __init init(void)
-{
+static int __init init(void) {
   int j;
 
   memset(&adc_dev, 0, sizeof(adc_dev));
@@ -478,8 +468,7 @@ static int __init init(void)
 }
 module_init(init);
 
-static void __exit adc_exit(void)
-{
+static void __exit adc_exit(void) {
   int j;
 
   spi_unregister_driver(&spi_driver);

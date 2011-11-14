@@ -55,18 +55,19 @@ struct nxt_sense_dev {
 static struct nxt_sense_dev nxt_sense_dev;
 //static struct nxt_sensor_dev nxt_sensor_dev[NUMBER_OF_PORTS];
 
-#define SAMPLE_FUNCTION(_port, _adc_channel)			\
-static int get_sample_##_port (int *data) {	\
-  int status = 0;				\
-  status = adc_sample_channel(_adc_channel, data);	\
-						\
-  if (status != 0) {							\
-    printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status); \
-  }									\
+#define SAMPLE_FUNCTION(_port, _adc_channel)				\
+  static int get_sample_##_port (int *data) {				\
+    int status = 0;							\
+    status = adc_sample_channel(_adc_channel, data);			\
 									\
-return status;					\
-}
+    if (status != 0) {							\
+      printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status); \
+    }									\
+									\
+    return status;							\
+  }
 
+/* sample_function(port, corresponding adc_channel) */
 SAMPLE_FUNCTION(0, 0)
 SAMPLE_FUNCTION(1, 1)
 SAMPLE_FUNCTION(2, 2)
