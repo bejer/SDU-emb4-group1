@@ -10,6 +10,8 @@
 #include <asm/uaccess.h>
 #include <mach/gpio.h>
 
+#include "../level_shifter/level_shifter.h"
+
 #define USER_BUFF_SIZE 128
 
 #define SPI_BUS 1
@@ -26,7 +28,7 @@
 #define ADC_CHANNEL1 0x08
 #define ADC_CHANNEL2 0x10
 #define ADC_CHANNEL3 0x18
-//Voltage devider
+//Voltage divider / voltage measurement
 #define ADC_CHANNEL4 0x20
 // Currently no specified use on channel 5-7
 #define ADC_CHANNEL5 0x28
@@ -37,10 +39,8 @@
 #define SPI_MASTER_IS_NULL -2
 
 #define SPI_BUFF_SIZE 4
-// BUF size org. 2
 
 #define GPIO_1OE 10
-#define GPIO_2OE 71
 
 #define number_of_devices 1
 
@@ -412,8 +412,9 @@ static int __init init_level_shifters(void) {
     goto init_pins_fail_1;
   }
 
-  if (gpio_request(GPIO_2OE, "SPI2OE")) {
-    printk(KERN_ALERT "gpio_request failed for SPI2OE\n");
+
+  if (register_use_of_level_shifter()) {
+    printk(KERN_ALERT DEVICE_NAME ": register_use_of_level_shifter failed\n");
     goto init_pins_fail_2;
   }
 
@@ -422,16 +423,11 @@ static int __init init_level_shifters(void) {
     goto init_pins_fail_3;
   }
 
-  if (gpio_direction_output(GPIO_2OE, 0)) {
-    printk(KERN_ALERT "gpio_direction_output GPIO_2OE failed\n");
-    goto init_pins_fail_3;
-  }
-
   //  goto init_pins_fail_1;
   return 0;
 
  init_pins_fail_3:
-  gpio_free(GPIO_2OE);
+  unregister_use_of_level_shifter();
 
  init_pins_fail_2:
   gpio_free(GPIO_1OE);
@@ -464,7 +460,7 @@ static int __init init(void)
   return 0;
 
  fail_4:
-  gpio_free(GPIO_2OE);
+  unregister_use_of_level_shifter();
   gpio_free(GPIO_1OE);
 
  fail_3:
@@ -503,7 +499,7 @@ static void __exit adc_exit(void)
     kfree(spi_ctl.rx_buff);
 
   /* Release spi level shifter pins */
-  gpio_free(GPIO_2OE);
+  unregister_use_of_level_shifter();
   gpio_free(GPIO_1OE);
 }
 module_exit(adc_exit);
