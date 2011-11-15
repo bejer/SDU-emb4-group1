@@ -317,6 +317,7 @@ int nxt_teardown_sensor_chrdev(struct nxt_sense_device_data *nxt_sense_device_da
   nxt_sense_device_data->devt = MKDEV(0, 0);
   nxt_sense_device_data->device = NULL;
   nxt_sense_device_data->get_sample = NULL;
+  nxt_sense_device_data->scl(SCL_LOW); /* reset the SCL pin */
   nxt_sense_device_data->scl = NULL;
 
   return 0;
@@ -480,6 +481,11 @@ static void __exit nxt_sense_exit(void)
 {
   int p[NUMBER_OF_PORTS] = {0, 0, 0, 0};
   update_port_cfg(p);
+
+  gpio_free(GPIO_SCL_1);
+  gpio_free(GPIO_SCL_2);
+  gpio_free(GPIO_SCL_3);
+  gpio_free(GPIO_SCL_4);
 
   device_remove_file(nxt_sense_dev.device, &dev_attr_config);
   device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
