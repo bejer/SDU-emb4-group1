@@ -372,12 +372,12 @@ static const struct file_operations nxt_sense_fops = {
   if (gpio_request(GPIO_SCL_##_port, "SCL##_port")) {			\
     printk(KERN_CRIT DEVICE_NAME ": gpio_request for pin %d failed\n", GPIO_SCL_##_port); \
     goto init_gpio_pins_fail_##_port;					\
-  } \ 
-							\
-if (gpio_direction_output(GPIO_SCL_##_port, 0)) {			\
-  printk(KERN_CRIT DEVICE_NAME ": could not set direction output on pin %d\n", GPIO_SCL_##_port); \
-  goto init_gpio_pins_fail_##_port;					\
- }
+  }									\
+  									\
+  if (gpio_direction_output(GPIO_SCL_##_port, 0)) {			\
+    printk(KERN_CRIT DEVICE_NAME ": could not set direction output on pin %d\n", GPIO_SCL_##_port); \
+    goto init_gpio_pins_fail_##_port;					\
+  }
 
 static int __init nxt_sense_init_gpio_pins(void) {
   GPIO_INIT_MACRO(1);
