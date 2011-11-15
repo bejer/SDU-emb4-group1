@@ -369,7 +369,7 @@ static const struct file_operations nxt_sense_fops = {
 
 /* Most of this function could be placed in a macro to only write the code once */
 #define GPIO_INIT_MACRO(_port)						\
-  if (gpio_request(GPIO_SCL_##_port, "SCL##_port")) {			\
+  if (gpio_request(GPIO_SCL_##_port, "SCL" #_port)) {			\
     printk(KERN_CRIT DEVICE_NAME ": gpio_request for pin %d failed\n", GPIO_SCL_##_port); \
     goto init_gpio_pins_fail_##_port;					\
   }									\
