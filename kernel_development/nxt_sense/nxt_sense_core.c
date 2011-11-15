@@ -15,7 +15,7 @@
 #include <asm/uaccess.h>
 
 #include "../adc/adc.h"
-
+#include "nxt_sense_core.h"
 /* Include the add and remove functions of the submodules that are supported */
 #include "touch.h"
 
@@ -201,41 +201,41 @@ static bool valid_devt(dev_t *devt) {
   return res;
 }
 
-int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cdev, dev_t *devt, struct device **device, const char *name, int (**get_sample)(int *)) {
+int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct nxt_sense_device_data *nxt_sense_device_data, const char *name) {
   int error;
 
-  if (!valid_devt(devt)) {
+  if (!valid_devt(&nxt_sense_device_data->devt)) {
     return -1;
   }
 
-  cdev_init(cdev, fops);
+  cdev_init(&nxt_sense_device_data->cdev, fops);
   
-  error = cdev_add(cdev, *devt, 1);
+  error = cdev_add(&nxt_sense_device_data->cdev, nxt_sense_device_data->devt, 1);
   if (error) {
     printk(KERN_ERR DEVICE_NAME ": could not add cdev for %s: %d\n", name, error);
     return -1;
   }
 
   /* Having the first NULL replaced with nxt_sense_dev.device : what does it exactly do? */
-  *device = device_create(nxt_sense_dev.class, NULL, *devt, NULL, "%s%d", name, MINOR(*devt)); /* Hardcoded correspondence between minor number and port number */
-  if (IS_ERR(*device)) {
-    printk(KERN_ERR DEVICE_NAME ": device_create() failed for sensor %s%d: %ld", name, MINOR(*devt), PTR_ERR(*device));
-    cdev_del(cdev);
+  nxt_sense_device_data->device = device_create(nxt_sense_dev.class, NULL, nxt_sense_device_data->devt, NULL, "%s%d", name, MINOR(nxt_sense_device_data->devt)); /* Hardcoded correspondence between minor number and port number */
+  if (IS_ERR(nxt_sense_device_data->device)) {
+    printk(KERN_ERR DEVICE_NAME ": device_create() failed for sensor %s%d: %ld", name, MINOR(nxt_sense_device_data->devt), PTR_ERR(nxt_sense_device_data->device));
+    cdev_del(&nxt_sense_device_data->cdev);
     return -1;
   }
 
-  switch (MINOR(*devt)) {
+  switch (MINOR(nxt_sense_device_data->devt)) {
   case 0:
-    *get_sample = get_sample_0;
+    nxt_sense_device_data->get_sample = get_sample_0;
     break;
   case 1:
-    *get_sample = get_sample_1;
+    nxt_sense_device_data->get_sample = get_sample_1;
     break;
   case 2:
-    *get_sample = get_sample_2;
+    nxt_sense_device_data->get_sample = get_sample_2;
     break;
   case 3:
-    *get_sample = get_sample_3;
+    nxt_sense_device_data->get_sample = get_sample_3;
     break;
   default:
     printk(KERN_WARNING DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up sampling functions is incorrect - FIX ME NOW!\n");
@@ -244,13 +244,17 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cde
   return 0;
 }
 
-int nxt_teardown_sensor_chrdev(struct cdev *cdev, dev_t *devt) {
-  if (!valid_devt(devt)) {
+int nxt_teardown_sensor_chrdev(struct nxt_sense_device_data *nxt_sense_device_data) {
+  if (!valid_devt(&nxt_sense_device_data->devt)) {
     return -1;
   }
 
-  device_destroy(nxt_sense_dev.class, *devt);
-  cdev_del(cdev);
+  device_destroy(nxt_sense_dev.class, nxt_sense_device_data->devt);
+  cdev_del(&nxt_sense_device_data->cdev);
+
+  nxt_sense_device_data->devt = MKDEV(0, 0);
+  nxt_sense_device_data->device = NULL;
+  nxt_sense_device_data->get_sample = NULL;
 
   return 0;
 }
