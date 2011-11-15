@@ -49,6 +49,8 @@ xport: archive
 
 transfer_to_gumstix:
 	scp -r $(home)/export/own_modules/ root@10.194.63.51:/
+	scp $(home)/module_loading_utility/load_modules.sh root@10.194.63.51:.
+	scp $(home)/module_loading_utility/unload_modules.sh root@10.194.63.51:.
 
 default:
 	echo "Valid targets are archive, build, deploy, format, umount, xport"
