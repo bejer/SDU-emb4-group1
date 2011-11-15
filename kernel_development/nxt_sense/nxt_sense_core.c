@@ -1,5 +1,5 @@
 /* TODO:
- *
+ * (see report... if you can obtain it...)
  */
 
 #include <linux/init.h>
@@ -122,7 +122,7 @@ static int unload_nxt_sensor(int port) {
 
   switch (nxt_sense_dev.port_cfg[port]) {
   case NONE_CODE:
-    return -3;
+    /* Do nothing */
     break;
   case TOUCH_CODE:
     status = remove_touch_sensor(port);
