@@ -134,9 +134,11 @@ static ssize_t threshold_store(struct device *dev, struct device_attribute *attr
   if (res != 1) {
     printk(KERN_ALERT DEVICE_NAME "%d: wrong sysfs input for threshold, only takes a value for the threshold\n", MINOR(td->devt));
   } else {
+    /* not looking at echo return values by default, so when the return value is not shown to the user, it requires a read of the value to confirm that it was actually set (the device was not busy) -- so just doing a sleep wait
     if (!mutex_trylock(&td->mutex)) {
       return -EBUSY;
-    }
+      }*/
+    mutex_lock(&td->mutex);
     
     td->threshold = new_threshold;
     

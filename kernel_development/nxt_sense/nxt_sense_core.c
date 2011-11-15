@@ -1,6 +1,5 @@
 /* TODO:
- * Make the port numbers (0-3 or 1-4) work correctly with the minor number that is given to the nxt_sense char device!!! Future task: Make the port numbers able to run from an arbitrary number, such that it is not required to have minor numbers starting from 0.
- * Look at all printk statements and make them use the same KERN_ALERT DEVICE_NAME setup and structure
+ *
  */
 
 #include <linux/init.h>
@@ -15,10 +14,9 @@
 #include <linux/stat.h>
 #include <asm/uaccess.h>
 
-/* Better setup of the dependencies */
 #include "../adc/adc.h"
 
-/* All these submodules includes and parsers? could be set in a single h file for that purpose */
+/* Include the add and remove functions of the submodules that are supported */
 #include "touch.h"
 
 #define DEVICE_NAME "nxt_sense"
@@ -30,91 +28,64 @@
 /* This requires the port_min to start from 0 unless the number_of_ports is incremented accordingly */
 #define NXT_SENSE_MINOR 4
 
+/* sensor types */
 #define NONWORKING_PORT_CODE -1
 #define NONE_CODE 0
 #define TOUCH_CODE 1
 #define LIGHT_CODE 2
 #define MAX_SENSOR_CODE LIGHT_CODE
 
-static const char *sensor_names[] = {NULL, "touch", "light"};
+DEFINE_MUTEX(nxt_sense_core_mutex);
 
 struct nxt_sense_dev {
   dev_t devt;
   struct cdev cdev;
   struct class *class;
-  //	char user_buff[USER_BUFF_SIZE];
   struct device *device;
   int port_cfg[NUMBER_OF_PORTS];
 };
 
-/* struct nxt_sensor_dev { */
-/*   struct cdev cdev; */
-/*   struct device *device; */
-/* }; */
-
 static struct nxt_sense_dev nxt_sense_dev;
-//static struct nxt_sensor_dev nxt_sensor_dev[NUMBER_OF_PORTS];
 
+/***********************************************************************
+ *
+ * Macros for generating the functions for sampling the corresponding
+ * ADC channels
+ *
+ ***********************************************************************/
 #define SAMPLE_FUNCTION(_port, _adc_channel)				\
   static int get_sample_##_port (int *data) {				\
     int status = 0;							\
     status = adc_sample_channel(_adc_channel, data);			\
 									\
     if (status != 0) {							\
-      printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status); \
+      printk(KERN_ERR DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status); \
     }									\
 									\
     return status;							\
   }
 
-/* sample_function(port, corresponding adc_channel) */
+/* applying the macro above - sample_function(port, corresponding adc_channel) */
 SAMPLE_FUNCTION(0, 0)
 SAMPLE_FUNCTION(1, 1)
 SAMPLE_FUNCTION(2, 2)
 SAMPLE_FUNCTION(3, 3)
 
-/* nxt_sense implements that there is a correspondence between port number and minor number for now, but keeps the implementation details like this in nxt_sense_core */
-static bool valid_devt(dev_t *devt) {
-  bool res = false;
-  if (MAJOR(*devt) == MAJOR(nxt_sense_dev.devt)) {
-    if (MINOR(*devt) >= PORT_MIN && MINOR(*devt) < (PORT_MIN + NUMBER_OF_PORTS)) {
-      res = true;
-    }
-  }
-
-  return res;
-}
-
-static bool valid_port(int port) {
-  bool res = false;
-  if (port >= PORT_MIN && port < (PORT_MIN + NUMBER_OF_PORTS))
-    res = true;
-
-  return res;
-}
-
-static char const *get_sensor_name(int port) {
-  int sensor_code;
-
-  if (!valid_port(port)) {
-    return NULL;
-  }
-
-  sensor_code = nxt_sense_dev.port_cfg[port];
-
-  if (sensor_code > NONE_CODE && sensor_code <= MAX_SENSOR_CODE) {
-    return sensor_names[sensor_code];
-  } else {
-    printk(KERN_ALERT DEVICE_NAME ": There is no named sensor on port %d, sensor_code = %d\n", port, sensor_code);
-    printk(KERN_ALERT DEVICE_NAME ": sensor_code [%d], [%d], [%d], [%d]\n", nxt_sense_dev.port_cfg[0], nxt_sense_dev.port_cfg[1], nxt_sense_dev.port_cfg[2], nxt_sense_dev.port_cfg[3]);
-  }
-
-  return NULL;
-}
-/* NOTE: should have a precondition/check of whether or not the sensor_code on the specified port is 0 (available) */
+/***********************************************************************
+ *
+ * Functions for managing the loading and unloading of the submodules
+ * Comments: Requires knowledge of the available submodules
+ *
+ ***********************************************************************/
 static int load_nxt_sensor(int sensor_code, int port) {
   int status = 0;
   dev_t devt;
+
+  /* If the port is not available then exit */
+  if (nxt_sense_dev.port_cfg[port] != NONE_CODE) {
+    return -3;
+  }
+
   devt = MKDEV(MAJOR(nxt_sense_dev.devt), port); /* NOTE: Hardcoded port to match minor number here! */
 
   nxt_sense_dev.port_cfg[port] = sensor_code;
@@ -130,30 +101,28 @@ static int load_nxt_sensor(int sensor_code, int port) {
     
     break;
   case NONWORKING_PORT_CODE:
-    /* Should it output that there is a bug in the code? */
-    printk("nxt_sense internal error: Trying to load a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
+    printk(KERN_ERR DEVICE_NAME ": internal error: Trying to load a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
     status = -1;
     break;
   default:
     /* Error... */
-    printk(KERN_ALERT "nxt_sense: Loading unknown sensor port code!: %d\n", sensor_code);
+    printk(KERN_ERR DEVICE_NAME ": Loading unknown sensor port code!: %d\n", sensor_code);
     status = -1;
   }
 
   if(status < 0){
-    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE; // Maybe just NONE_CODE since the adding tries to clean up for itself...
+    nxt_sense_dev.port_cfg[port] = NONWORKING_PORT_CODE;
   }
 
   return status;
 }
 
-/* NOTE: Should have a precondition/check that takes care of handling cases where the sensor code is NONE_CODE (no devices allocated/created/assigned) */
-static int unload_nxt_sensor(int sensor_code, int port) {
+static int unload_nxt_sensor(int port) {
   int status = 0;
 
-  switch (sensor_code) {
+  switch (nxt_sense_dev.port_cfg[port]) {
   case NONE_CODE:
-    /* Do nothing */
+    return -3;
     break;
   case TOUCH_CODE:
     status = remove_touch_sensor(port);
@@ -162,13 +131,12 @@ static int unload_nxt_sensor(int sensor_code, int port) {
     
     break;
   case NONWORKING_PORT_CODE:
-    /* Should it output that there is a bug in the code? */
-    printk("nxt_sense internal error: Trying to unload a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
-    status = -1;
+    printk(KERN_ERR DEVICE_NAME ": internal error: Trying to unload a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", nxt_sense_dev.port_cfg[port]);
+    return -4;
     break;
   default:
     /* Error... */
-    printk(KERN_ALERT "nxt_sense: Unloading unknown sensor port code!: %d\n", sensor_code);
+    printk(KERN_ERR DEVICE_NAME ": Unloading unknown sensor port code!: %d\n", nxt_sense_dev.port_cfg[port]);
     status = -1;
   }
 
@@ -181,7 +149,58 @@ static int unload_nxt_sensor(int sensor_code, int port) {
   return status;
 }
 
-/* Hook to be called from the sensor submodules */
+static int update_port_cfg(int cfg[]) {
+  int res;
+  int i;
+  int error_occurred = 0;
+  for (i = 0; i < NUMBER_OF_PORTS; ++i) {
+    if (cfg[i] < NONE_CODE || cfg[i] > MAX_SENSOR_CODE) {
+      return -1;
+    }
+  }
+
+  for (i = 0; i < NUMBER_OF_PORTS; ++i) {
+    if (nxt_sense_dev.port_cfg[i] != cfg[i] && nxt_sense_dev.port_cfg[i] != NONWORKING_PORT_CODE) {
+      res = unload_nxt_sensor(i);
+      if (res != 0) {
+        error_occurred = -2;
+	continue;
+      }
+
+      res = load_nxt_sensor(cfg[i], i);
+      if (res != 0) {
+	error_occurred = -3;
+	continue;
+      }
+
+    }
+  }
+
+  return error_occurred;
+}
+
+
+/***********************************************************************
+ *
+ * Hooks for setting up the sensor char devices,
+ * called from the submodules
+ *
+ ***********************************************************************/
+
+/* Just a utility function, not meant to be used as a hook
+ * Comments: nxt_sense implements that there is a correspondence between port number and minor number for now, but keeps the implementation details like this in nxt_sense_core
+ */
+static bool valid_devt(dev_t *devt) {
+  bool res = false;
+  if (MAJOR(*devt) == MAJOR(nxt_sense_dev.devt)) {
+    if (MINOR(*devt) >= PORT_MIN && MINOR(*devt) < (PORT_MIN + NUMBER_OF_PORTS)) {
+      res = true;
+    }
+  }
+
+  return res;
+}
+
 int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cdev, dev_t *devt, struct device **device, const char *name, int (**get_sample)(int *)) {
   int error;
 
@@ -193,14 +212,14 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cde
   
   error = cdev_add(cdev, *devt, 1);
   if (error) {
-    printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", name, error);
+    printk(KERN_ERR DEVICE_NAME ": could not add cdev for %s: %d\n", name, error);
     return -1;
   }
 
   /* Having the first NULL replaced with nxt_sense_dev.device : what does it exactly do? */
-  *device = device_create(nxt_sense_dev.class, NULL, *devt, NULL, "%s%d", name, MINOR(*devt)); /* When having port indexing MINOR(*devt) could be replaced by a port number... but is considered bad behaviour */
+  *device = device_create(nxt_sense_dev.class, NULL, *devt, NULL, "%s%d", name, MINOR(*devt)); /* Hardcoded correspondence between minor number and port number */
   if (IS_ERR(*device)) {
-    printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s%d: %ld", name, MINOR(*devt), PTR_ERR(*device));
+    printk(KERN_ERR DEVICE_NAME ": device_create() failed for sensor %s%d: %ld", name, MINOR(*devt), PTR_ERR(*device));
     cdev_del(cdev);
     return -1;
   }
@@ -219,39 +238,11 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cde
     *get_sample = get_sample_3;
     break;
   default:
-    printk(KERN_ALERT DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up sampling functions is incorrect - FIX ME NOW!\n");
+    printk(KERN_WARNING DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up sampling functions is incorrect - FIX ME NOW!\n");
   }
 
   return 0;
 }
-
-/* NOTE: These functions sould not be called outside load and unload nxt_modules.... */
-/* NOTE: Should the majority of this code be placed in the drivers? eventhough it will be the same for all drivers - how about giving them the responsibility of creating extra devices and destroying them together with sysfs entries */
-/* NOTE: should give access to the nxt_sensor_dev[port].device pointer for creating sysfs entries */
-/* int nxt_setup_sensor_chrdev(const struct file_operations *fops, const int port) { */
-/*   int error; */
-
-/*   if (!valid_port(port)) { */
-/*     return -1; */
-/*   } */
-
-/*   cdev_init(&nxt_sensor_dev[port].cdev, fops); */
-  
-/*   error = cdev_add(&nxt_sensor_dev[port].cdev, MKDEV(MAJOR(nxt_sense_dev.devt), port), 1); */
-/*   if (error) { */
-/*     printk(KERN_ALERT DEVICE_NAME ": could not add cdev for %s: %d\n", get_sensor_name(port), error); */
-/*     return -1; */
-/*   } */
-
-/*   nxt_sensor_dev[port].device = device_create(nxt_sense_dev.class, nxt_sense_dev.device, MKDEV(MAJOR(nxt_sense_dev.devt), port), NULL, "%s%d", get_sensor_name(port), port); */
-/*   if (IS_ERR(nxt_sensor_dev[port].device)) { */
-/*     printk(KERN_ALERT DEVICE_NAME ": device_create() failed for sensor %s: %ld", DEVICE_NAME, PTR_ERR(nxt_sensor_dev[port].device)); */
-/*     cdev_del(&nxt_sensor_dev[port].cdev); */
-/*     return -1; */
-/*   } */
-
-/*   return 0; */
-/* } */
 
 int nxt_teardown_sensor_chrdev(struct cdev *cdev, dev_t *devt) {
   if (!valid_devt(devt)) {
@@ -264,54 +255,11 @@ int nxt_teardown_sensor_chrdev(struct cdev *cdev, dev_t *devt) {
   return 0;
 }
 
-/* NOTE: Handle the channels accordingly to the port - lucky that it fits right now, but should be made more dynamically / robust */
-int get_sample(const int port, int *data) {
-  int status;
-
-  if (!valid_port(port)) {
-    return -1;
-  }
-
-  status = adc_sample_channel(port, data);
-
-  if (status != 0) {
-    printk(KERN_ALERT DEVICE_NAME ": Some error happened while communicating with the ADC: %d\n", status);
-  }
-
-  return status;
-}
-
-static int update_port_cfg(int cfg[]) {
-  int res;
-  int i;
-  int error_occurred = 0;
-  for (i = 0; i < NUMBER_OF_PORTS; ++i) {
-    if (cfg[i] < NONE_CODE || cfg[i] > MAX_SENSOR_CODE) {
-      return -1;
-    }
-  }
-
-  for (i = 0; i < NUMBER_OF_PORTS; ++i) {
-    if (nxt_sense_dev.port_cfg[i] != cfg[i] && nxt_sense_dev.port_cfg[i] != NONWORKING_PORT_CODE) {
-      res = unload_nxt_sensor(nxt_sense_dev.port_cfg[i], i);
-      if (res != 0) {
-        error_occurred = -2;
-	continue;
-      }
-
-      res = load_nxt_sensor(cfg[i], i);
-      if (res != 0) {
-	error_occurred = -3;
-	continue;
-      }
-
-    }
-  }
-
-
-  return error_occurred;
-}
-
+/***********************************************************************
+ *
+ * Sysfs show and store functions for the configuration interface
+ *
+ ***********************************************************************/
 static ssize_t nxt_sense_show(struct device *dev, struct device_attribute *attr, char *buf) {
   
   return scnprintf(buf, PAGE_SIZE, "%d %d %d %d\n", nxt_sense_dev.port_cfg[0], nxt_sense_dev.port_cfg[1], nxt_sense_dev.port_cfg[2], nxt_sense_dev.port_cfg[3]);
@@ -325,13 +273,15 @@ static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr
   res = sscanf(buf, "%d %d %d %d", &p[0], &p[1], &p[2], &p[3]);
 
   if (res != NUMBER_OF_PORTS) {
-    printk("nxt_sense: sysfs input was not four integers!\n");
+    printk(KERN_WARNING DEVICE_NAME ": sysfs input was not four integers!\n");
   } else {
-    printk("nxt_sense: sysfs input: %d %d %d %d\n", p[0], p[1], p[2], p[3]);
+    printk(KERN_DEBUG DEVICE_NAME ": sysfs input: %d %d %d %d\n", p[0], p[1], p[2], p[3]);
 
+    mutex_lock(&nxt_sense_core_mutex);
     status = update_port_cfg(p);
+    mutex_unlock(&nxt_sense_core_mutex);
     if (status != 0) {
-      printk(KERN_ALERT DEVICE_NAME ": error from update_port_cfg([%d] [%d] [%d] [%d]): %d\n", p[0], p[1], p[2], p[3], status);
+      printk(KERN_ERR DEVICE_NAME ": error from update_port_cfg([%d] [%d] [%d] [%d]): %d\n", p[0], p[1], p[2], p[3], status);
     }
   }
 
@@ -341,6 +291,11 @@ static ssize_t nxt_sense_store(struct device *dev, struct device_attribute *attr
 /* See linux/stat.h for more info: S_IRUGO gives read permission for everyone and S_IWUSR gives write permission for the user (in this case root is the owner) */
 DEVICE_ATTR(config, (S_IRUGO | S_IWUSR), nxt_sense_show, nxt_sense_store);
 
+/***********************************************************************
+ *
+ * Module initialisation and uninitialisation
+ *
+ ***********************************************************************/
 static const struct file_operations nxt_sense_fops = {
   .owner =	THIS_MODULE,
 };
@@ -353,7 +308,7 @@ static int __init nxt_sense_init_cdev(void)
 
   error = alloc_chrdev_region(&nxt_sense_dev.devt, 0, NUMBER_OF_DEVICES, DEVICE_NAME);
   if (error < 0) {
-    printk(KERN_ALERT "alloc_chrdev_region() in nxt_sense failed: %d \n", 
+    printk(KERN_CRIT DEVICE_NAME ": alloc_chrdev_region() failed: %d\n", 
 	   error);
     return -1;
   }
@@ -363,7 +318,7 @@ static int __init nxt_sense_init_cdev(void)
 
   error = cdev_add(&nxt_sense_dev.cdev, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR), 1);
   if (error) {
-    printk(KERN_ALERT "cdev_add() failed: %d\n", error);
+    printk(KERN_CRIT DEVICE_NAME ": cdev_add() failed: %d\n", error);
     unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
     return -1;
   }	
@@ -376,20 +331,20 @@ static int __init nxt_sense_init_class(void)
   nxt_sense_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
 
   if (IS_ERR(nxt_sense_dev.class)) {
-    printk(KERN_ALERT "class_create() failed\n");
+    printk(KERN_CRIT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(nxt_sense_dev.class));
     return -1;
   }
 
   nxt_sense_dev.device = device_create(nxt_sense_dev.class, NULL, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR), NULL, DEVICE_NAME);
 
   if (IS_ERR(nxt_sense_dev.device)) {
-    printk(KERN_ALERT "device_create(..., %s) failed: %ld\n", DEVICE_NAME, PTR_ERR(nxt_sense_dev.device));
+    printk(KERN_CRIT DEVICE_NAME ": device_create() failed: %ld\n", PTR_ERR(nxt_sense_dev.device));
     class_destroy(nxt_sense_dev.class);
     return -1;
   }
 
   if (device_create_file(nxt_sense_dev.device, &dev_attr_config)) {
-    printk("device_create_file error: -EXISTS (hardcoded)");
+    printk(KERN_CRIT DEVICE_NAME ": device_create_file() failed\n");
     device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
     class_destroy(nxt_sense_dev.class);
     return -1;
@@ -400,7 +355,7 @@ static int __init nxt_sense_init_class(void)
 
 static int __init nxt_sense_init(void)
 {
-  printk("Inside nxt_sense_init\n");
+  printk(KERN_DEBUG DEVICE_NAME ": Inside nxt_sense_init()\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
 
   if (nxt_sense_init_cdev() < 0) 
@@ -431,8 +386,9 @@ static void __exit nxt_sense_exit(void)
 
   cdev_del(&nxt_sense_dev.cdev);
   unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
+
+  printk(KERN_DEBUG DEVICE_NAME ": Exiting nxt_sense_exit()\n");
 }
 module_exit(nxt_sense_exit);
 MODULE_AUTHOR("Group1");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("0.1");
