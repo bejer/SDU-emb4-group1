@@ -1,5 +1,5 @@
 /* TODO:
- * Make sure the touch_data data is correctly (actually is) being uninitialised (pointer => NULL etc...)
+ * 
  */
 
 #include <linux/module.h>
@@ -19,7 +19,7 @@
 
 /* nxt_sense_device_data has to be placed at the top/front of the struct, in order of having polymorphy in C - makes it possible to obtain a pointer to touch_data using only one container_of macro on nxt_sense_device_data in the device open, read and release calls/fileoperations */
 struct touch_data {
-  struct nxt_sense_device_data nxt_sense_device_data;
+  struct nxt_sense_device_data nxt_sense_device_data; /* Has to be placed at the beginning, see above comment! */
   struct device_attribute dev_attr_threshold;
   struct device_attribute dev_attr_raw_sample;
   int port;
@@ -29,14 +29,11 @@ struct touch_data {
 
 static struct touch_data touch_data[4];
 
-bool obtain_nonblocking_lock(struct mutex *mutex) {
-  if (mutex_trylock(mutex)) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
+/***********************************************************************
+ *
+ * File operations for the /dev/touch# files
+ *
+ ***********************************************************************/
 static int touch_open(struct inode *inode, struct file *filp) {
   struct touch_data *td;
 
@@ -103,6 +100,18 @@ static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, lo
   return status;
 }
 
+static const struct file_operations touch_fops = {
+  .owner = THIS_MODULE,
+  .read = touch_read,
+  .open = touch_open,
+  .release = touch_release,
+};
+
+/***********************************************************************
+ *
+ * Sysfs entries for reading and setting the threshold value
+ *
+ ***********************************************************************/
 static ssize_t threshold_show(struct device *dev, struct device_attribute *attr, char *buf) {
   int threshold;
   struct touch_data *td;
@@ -128,7 +137,7 @@ static ssize_t threshold_store(struct device *dev, struct device_attribute *attr
   res = sscanf(buf, "%d", &new_threshold);
 
   if (res != 1) {
-    printk(KERN_ALERT DEVICE_NAME "%d: wrong sysfs input for threshold, only takes a value for the threshold\n", MINOR(td->nxt_sense_device_data.devt));
+    printk(KERN_WARNING DEVICE_NAME "%d: wrong sysfs input for threshold, only takes a value for the threshold\n", MINOR(td->nxt_sense_device_data.devt));
   } else {
     /* not looking at echo return values by default, so when the return value is not shown to the user, it requires a read of the value to confirm that it was actually set (the device was not busy) -- so just doing a sleep wait
     if (!mutex_trylock(&td->mutex)) {
@@ -143,9 +152,12 @@ static ssize_t threshold_store(struct device *dev, struct device_attribute *attr
 
   return count;
 }
-/* See linux/stat.h for more info: S_IRUGO gives read permission for everyone and S_IWUSR gives write permission for the user (in this case root is the owner) */
-//DEVICE_ATTR(threshold, (S_IRUGO | S_IWUSR), threshold_show, threshold_store);
 
+/***********************************************************************
+ *
+ * Sysfs entries for reading the raw sample value
+ *
+ ***********************************************************************/
 /* NOTE: Should it have another error handling return -1 instead of printing -1? */
 static ssize_t raw_sample_show(struct device *dev, struct device_attribute *attr, char *buf) {
   int status;
@@ -162,22 +174,19 @@ static ssize_t raw_sample_show(struct device *dev, struct device_attribute *attr
   mutex_unlock(&td->mutex);
 
   if (status != 0) {
-    printk(KERN_ALERT DEVICE_NAME "%d: error trying to get a sample: %d\n", MINOR(td->nxt_sense_device_data.devt), status);
+    printk(KERN_ERR DEVICE_NAME "%d: error trying to get a sample: %d\n", MINOR(td->nxt_sense_device_data.devt), status);
     sample = -1;
   }
 
   return scnprintf(buf, PAGE_SIZE, "%d\n", sample);
 }
 
-//DEVICE_ATTR(raw_sample, (S_IRUGO), raw_sample_show, NULL);
-
-static const struct file_operations touch_fops = {
-  .owner = THIS_MODULE,
-  .read = touch_read,
-  .open = touch_open,
-  .release = touch_release,
-};
-
+/***********************************************************************
+ *
+ * Utility functions for actually setting up the sysfs entries
+ * and removing them again.
+ *
+ ***********************************************************************/
 int init_sysfs(struct touch_data *td) {
   int error = 0;
 
@@ -215,21 +224,25 @@ int destroy_sysfs(struct touch_data *td) {
   return 0;
 }
 
+/***********************************************************************
+ *
+ * Hooks for adding and removing devices for the touch sensor submodule,
+ * called from nxt_sense_core.c
+ *
+ ***********************************************************************/
 int add_touch_sensor(int port, dev_t devt) {
   int res;
   int error;
-  printk("Inside init_touch_sensor\n");
+  printk(KERN_DEBUG DEVICE_NAME ": Adding touch sensor on port %d\n", port);
 
   mutex_init(&touch_data[port].mutex);
   mutex_lock(&touch_data[port].mutex); /* void, so sleeps until the lock is acquired? mutex_lock_interruptible returns an error indicating it was interrupted... */
-    
 
   touch_data[port].nxt_sense_device_data.devt = devt;
 
-  //  res = nxt_setup_sensor_chrdev(&touch_fops, &touch_data[port].cdev, &touch_data[port].devt, &touch_data[port].device, DEVICE_NAME, &touch_data[port].get_sample);
   res = nxt_setup_sensor_chrdev(&touch_fops, &touch_data[port].nxt_sense_device_data, DEVICE_NAME);
 
-  printk("init_touch_sensor res: %d\n", res);
+  printk(KERN_DEBUG DEVICE_NAME ": return value for nxt_setup_sensor_chrdev: %d\n", res);
 
   touch_data[port].port = port;
   touch_data[port].threshold = DEFAULT_THRESHOLD;
@@ -237,7 +250,7 @@ int add_touch_sensor(int port, dev_t devt) {
   error = init_sysfs(&touch_data[port]);
   mutex_unlock(&touch_data[port].mutex);
   if (error != 0) {
-    /* error .... handle this correct */
+    /* error .... handle this if you want */
     return -1;
   }
 
@@ -246,13 +259,15 @@ int add_touch_sensor(int port, dev_t devt) {
 
 int uninitialise_touch_data(struct touch_data *td) {
   mutex_destroy(&td->mutex);
+  td->port = 0;
+  td->threshold = 0;
 
   return 0;
 }
 
 int remove_touch_sensor(int port) {
   int res;
-  printk("Inside remove_touch_sensor\n");
+  printk(KERN_DEBUG DEVICE_NAME ": Removing touch sensor on port %d\n", port);
 
   destroy_sysfs(&touch_data[port]);
 

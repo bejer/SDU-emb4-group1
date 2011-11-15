@@ -201,7 +201,6 @@ static bool valid_devt(dev_t *devt) {
   return res;
 }
 
-//int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct cdev *cdev, dev_t *devt, struct device **device, const char *name, int (**get_sample)(int *)) {
 int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct nxt_sense_device_data *nxt_sense_device_data, const char *name) {
   int error;
 
@@ -245,7 +244,6 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct nxt_sense
   return 0;
 }
 
-//int nxt_teardown_sensor_chrdev(struct cdev *cdev, dev_t *devt) {
 int nxt_teardown_sensor_chrdev(struct nxt_sense_device_data *nxt_sense_device_data) {
   if (!valid_devt(&nxt_sense_device_data->devt)) {
     return -1;
