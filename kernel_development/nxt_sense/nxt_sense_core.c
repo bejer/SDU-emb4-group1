@@ -1,5 +1,5 @@
 /* TODO:
- *
+ * (see report... if you can obtain it...)
  */
 
 #include <linux/init.h>
@@ -122,7 +122,7 @@ static int unload_nxt_sensor(int port) {
 
   switch (nxt_sense_dev.port_cfg[port]) {
   case NONE_CODE:
-    return -3;
+    /* Do nothing */
     break;
   case TOUCH_CODE:
     status = remove_touch_sensor(port);
@@ -355,7 +355,7 @@ static int __init nxt_sense_init_class(void)
 
 static int __init nxt_sense_init(void)
 {
-  printk(KERN_DEBUG DEVICE_NAME ": Inside nxt_sense_init()\n");
+  printk(KERN_DEBUG DEVICE_NAME ": Initialising nxt_sense...\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
 
   if (nxt_sense_init_cdev() < 0) 
@@ -387,7 +387,7 @@ static void __exit nxt_sense_exit(void)
   cdev_del(&nxt_sense_dev.cdev);
   unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
 
-  printk(KERN_DEBUG DEVICE_NAME ": Exiting nxt_sense_exit()\n");
+  printk(KERN_DEBUG DEVICE_NAME ": Exiting nxt_sense...\n");
 }
 module_exit(nxt_sense_exit);
 MODULE_AUTHOR("Group1");
