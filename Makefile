@@ -47,5 +47,8 @@ xport: archive
 	(cd $(mount_place); sudo rm -rf export; sudo tar -zxvf $(home)/export.tgz)
 	sudo umount $(device)2
 
+transfer_to_gumstix:
+	scp -r $(home)/export/own_modules/ root@10.194.63.51:/
+
 default:
 	echo "Valid targets are archive, build, deploy, format, umount, xport"
