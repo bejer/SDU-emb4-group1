@@ -13,11 +13,13 @@
 #include <linux/string.h>
 #include <linux/stat.h>
 #include <asm/uaccess.h>
+#include <mach/gpio.h>
 
 #include "../adc/adc.h"
 #include "nxt_sense_core.h"
 /* Include the add and remove functions of the submodules that are supported */
 #include "touch.h"
+#include "light.h"
 
 #define DEVICE_NAME "nxt_sense"
 
