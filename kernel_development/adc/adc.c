@@ -45,6 +45,8 @@
 
 #define number_of_devices 1
 
+DEFINE_MUTEX(adc_mutex);
+
 struct adc_dev {
   dev_t devt;
   struct cdev cdev;
@@ -67,7 +69,7 @@ struct adc_info {
 
 static struct spi_control spi_ctl;
 static struct adc_dev adc_dev;
-static struct adc_info adc_info;
+static struct adc_info adc_info[NO_ADC_CHANNELS];
 
 
 static void spi_prepare_message(int channel) {
@@ -132,15 +134,18 @@ static int spi_do_message(int channel) {
   return status;
 }
 
+/* Every sampling bounces through this function - taking care of concurrency here to avoid having multiple clients play around in the same data... */
 /* Returns zero on success, else a negative error code */
 static int adc_sample_channel(int channel, int *data) {
   int status;
   int sample_value;
 
+  mutex_lock(&adc_mutex);
+
   if (!adc_dev.spi_device) {
-    return SPI_DEVICE_IS_NULL;
+    status = SPI_DEVICE_IS_NULL;
   } else if (!adc_dev.spi_device->master) {
-    return SPI_MASTER_IS_NULL;
+    status = SPI_MASTER_IS_NULL;
   } else {
     status = spi_do_message(channel);
 
@@ -150,6 +155,8 @@ static int adc_sample_channel(int channel, int *data) {
 
     *data = sample_value;
   }
+
+  mutex_unlock(&adc_mutex);
 
   return status;
 }
@@ -198,10 +205,9 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
 }
 
 static int adc_open(struct inode *inode, struct file *filp) {	
-  //	int status = 0;
+  int chan = MINOR(inode->i_rdev);
 
-  adc_info.channel = MINOR(inode->i_rdev);
-  filp->private_data = &adc_info;
+  filp->private_data = &adc_info[chan];
 
   return 0;
 }
@@ -433,6 +439,11 @@ static int __init init(void) {
 
   memset(&adc_dev, 0, sizeof(adc_dev));
   memset(&spi_ctl, 0, sizeof(spi_ctl));
+
+  /* Initialise the adc_info array - minor workaround to keep track of which /dev/file that is opened by the user */
+  for (j = 0; j < NO_ADC_CHANNELS; ++j) {
+    adc_info[j].channel = j;
+  }
 
   if (init_cdev() < 0) 
     goto fail_1;
