@@ -186,7 +186,7 @@ static ssize_t raw_sample_show(struct device *dev, struct device_attribute *attr
  * and removing them again.
  *
  ***********************************************************************/
-int init_sysfs(struct touch_data *td) {
+static int init_sysfs(struct touch_data *td) {
   int error = 0;
 
 /* Manually doing what the macro DEVICE_ATTR is doing behind the scenes, but working around it for having a structure for each touch_data */
@@ -216,7 +216,7 @@ int init_sysfs(struct touch_data *td) {
   return 0;
 }
 
-int destroy_sysfs(struct touch_data *td) {
+static int destroy_sysfs(struct touch_data *td) {
   device_remove_file(td->nxt_sense_device_data.device, &td->dev_attr_threshold);
   device_remove_file(td->nxt_sense_device_data.device, &td->dev_attr_raw_sample);
 
@@ -256,7 +256,7 @@ int add_touch_sensor(int port, dev_t devt) {
   return res;
 }
 
-int uninitialise_touch_data(struct touch_data *td) {
+static int uninitialise_touch_data(struct touch_data *td) {
   mutex_destroy(&td->mutex);
   td->port = 0;
   td->threshold = 0;

@@ -18,6 +18,7 @@ struct light_data {
   struct nxt_sense_device_data nxt_sense_device_data; /* Has to be placed at the beginning, see above comment! */
   struct device_attribute dev_attr_led;
   int port;
+  int led;
   struct mutex mutex;
 };
 
@@ -149,7 +150,7 @@ static ssize_t led_store(struct device *dev, struct device_attribute *attr, cons
  * and removing them again.
  *
  ***********************************************************************/
-int init_sysfs(struct light_data *ld) {
+static int init_sysfs(struct light_data *ld) {
   int error = 0;
 
 /* Manually doing what the macro DEVICE_ATTR is doing behind the scenes, but working around it for having a structure for each light_data */
@@ -167,7 +168,7 @@ int init_sysfs(struct light_data *ld) {
   return 0;
 }
 
-int destroy_sysfs(struct light_data *ld) {
+static int destroy_sysfs(struct light_data *ld) {
   device_remove_file(ld->nxt_sense_device_data.device, &ld->dev_attr_led);
 
   return 0;
@@ -206,7 +207,7 @@ int add_light_sensor(int port, dev_t devt) {
   return res;
 }
 
-int uninitialise_light_data(struct light_data *ld) {
+static int uninitialise_light_data(struct light_data *ld) {
   mutex_destroy(&ld->mutex);
   ld->port = 0;
   ld->led = DEFAULT_LED_VALUE;
