@@ -1,7 +1,7 @@
 # cross-compile module makefile
 export := /home/michael/Temp/SDU-emb4-group1
 NAME := nxt_sense
-NAME-OBJS := nxt_sense_core.o touch.o
+NAME-OBJS := nxt_sense_core.o touch.o light.o
 
 ifneq ($(KERNELRELEASE),)
 	obj-m := $(NAME).o
