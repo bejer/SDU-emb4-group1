@@ -67,7 +67,6 @@ static ssize_t touch_read(struct file *filp, char __user *buff, size_t count, lo
   int status_sampling;
   struct touch_data *td = filp->private_data;
 
-  //  status_sampling = get_sample(td->port, &data);
   status_sampling = td->nxt_sense_device_data.get_sample(&data);
 
   if (data < td->threshold) {

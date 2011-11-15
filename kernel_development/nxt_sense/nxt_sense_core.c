@@ -35,6 +35,12 @@
 #define LIGHT_CODE 2
 #define MAX_SENSOR_CODE LIGHT_CODE
 
+/* GPIO pins */
+#define GPIO_SCL_1 73
+#define GPIO_SCL_2 75
+#define GPIO_SCL_3 72
+#define GPIO_SCL_4 74
+
 DEFINE_MUTEX(nxt_sense_core_mutex);
 
 struct nxt_sense_dev {
@@ -73,6 +79,41 @@ SAMPLE_FUNCTION(3, 3)
 
 /***********************************************************************
  *
+ * Macros for generating the functions for operating the SCL pins
+ *
+ ***********************************************************************/
+#define SCL_FUNCTION(_port, _pin)					\
+  static int scl_##_port (enum scl_bit_flags bit_flag) {		\
+    int status = 0;							\
+    static int current_value = 0;					\
+									\
+    switch (bit_flag) {							\
+    case SCL_LOW:							\
+      gpio_set_value(_pin, 0);						\
+      current_value = 0;						\
+      break;								\
+    case SCL_HIGH:							\
+      gpio_set_value(_pin, 1);						\
+      current_value = 1;						\
+      break;								\
+    case SCL_TOGGLE:							\
+      gpio_set_value(_pin, (current_value == 0 ? 1 : 0));		\
+      break;								\
+    default:								\
+      printk(KERN_WARNING DEVICE_NAME ": The given bit flag is invalid: %d\n", bit_flag); \
+    }									\
+    									\
+    return status;							\
+  }
+
+/* applying the macro above - scl_function(port, corresponding SCL pin) */
+SCL_FUNCTION(0, GPIO_SCL_1);
+SCL_FUNCTION(1, GPIO_SCL_2);
+SCL_FUNCTION(2, GPIO_SCL_3);
+SCL_FUNCTION(3, GPIO_SCL_4);
+
+/***********************************************************************
+ *
  * Functions for managing the loading and unloading of the submodules
  * Comments: Requires knowledge of the available submodules
  *
@@ -98,7 +139,7 @@ static int load_nxt_sensor(int sensor_code, int port) {
     status = add_touch_sensor(port, devt);
     break;
   case LIGHT_CODE:
-    
+    status = add_light_sensor(port, devt);
     break;
   case NONWORKING_PORT_CODE:
     printk(KERN_ERR DEVICE_NAME ": internal error: Trying to load a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", sensor_code);
@@ -128,7 +169,7 @@ static int unload_nxt_sensor(int port) {
     status = remove_touch_sensor(port);
     break;
   case LIGHT_CODE:
-    
+    status = remove_light_sensor(port);
     break;
   case NONWORKING_PORT_CODE:
     printk(KERN_ERR DEVICE_NAME ": internal error: Trying to unload a nxt_sensor with NONWORKING_PORT_CODE (%d)\n", nxt_sense_dev.port_cfg[port]);
@@ -239,6 +280,25 @@ int nxt_setup_sensor_chrdev(const struct file_operations *fops, struct nxt_sense
     break;
   default:
     printk(KERN_WARNING DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up sampling functions is incorrect - FIX ME NOW!\n");
+    return -1;
+  }
+
+  switch (MINOR(nxt_sense_device_data->devt)) {
+  case 0:
+    nxt_sense_device_data->scl = scl_0;
+    break;
+  case 1:
+    nxt_sense_device_data->scl = scl_1;
+    break;
+  case 2:
+    nxt_sense_device_data->scl = scl_2;
+    break;
+  case 3:
+    nxt_sense_device_data->scl = scl_3;
+    break;
+  default:
+    printk(KERN_WARNING DEVICE_NAME ": The given minor number in devt is valid but the hardcoded values for setting up scl functions is incorrect - FIX ME NOW!\n");
+    return -1;
   }
 
   return 0;
@@ -255,6 +315,7 @@ int nxt_teardown_sensor_chrdev(struct nxt_sense_device_data *nxt_sense_device_da
   nxt_sense_device_data->devt = MKDEV(0, 0);
   nxt_sense_device_data->device = NULL;
   nxt_sense_device_data->get_sample = NULL;
+  nxt_sense_device_data->scl = NULL;
 
   return 0;
 }
@@ -303,6 +364,37 @@ DEVICE_ATTR(config, (S_IRUGO | S_IWUSR), nxt_sense_show, nxt_sense_store);
 static const struct file_operations nxt_sense_fops = {
   .owner =	THIS_MODULE,
 };
+
+/* Most of this function could be placed in a macro to only write the code once */
+#define GPIO_INIT_MACRO(_port)						\
+  if (gpio_request(GPIO_SCL_##_port, "SCL##_port")) {			\
+    printk(KERN_CRIT DEVICE_NAME ": gpio_request for pin %d failed\n", GPIO_SCL_##_port); \
+    goto init_gpio_pins_fail_##_port;					\
+  } \ 
+							\
+if (gpio_direction_output(GPIO_SCL_##_port, 0)) {			\
+  printk(KERN_CRIT DEVICE_NAME ": could not set direction output on pin %d\n", GPIO_SCL_##_port); \
+  goto init_gpio_pins_fail_##_port;					\
+ }
+
+static int __init nxt_sense_init_gpio_pins(void) {
+  GPIO_INIT_MACRO(1);
+  GPIO_INIT_MACRO(2);
+  GPIO_INIT_MACRO(3);
+  GPIO_INIT_MACRO(4);
+
+  return 0;
+
+ init_gpio_pins_fail_4:
+  gpio_free(GPIO_SCL_3);
+ init_gpio_pins_fail_3:
+  gpio_free(GPIO_SCL_2);
+ init_gpio_pins_fail_2:
+  gpio_free(GPIO_SCL_1);
+ init_gpio_pins_fail_1:
+  return -1;
+
+}
 
 static int __init nxt_sense_init_cdev(void)
 {
@@ -361,6 +453,9 @@ static int __init nxt_sense_init(void)
 {
   printk(KERN_DEBUG DEVICE_NAME ": Initialising nxt_sense...\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
+
+  if (nxt_sense_init_gpio_pins() < 0)
+    goto fail_1;
 
   if (nxt_sense_init_cdev() < 0) 
     goto fail_1;
