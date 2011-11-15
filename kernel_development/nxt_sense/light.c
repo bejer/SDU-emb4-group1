@@ -127,7 +127,7 @@ static ssize_t led_store(struct device *dev, struct device_attribute *attr, cons
 
   if (res != 1) {
     printk(KERN_WARNING DEVICE_NAME "%d: wrong sysfs input for led, only takes a value for the led\n", MINOR(ld->nxt_sense_device_data.devt));
-  } else if (new_led != 0 || new_led != 1) {
+  } else if (new_led != 0 && new_led != 1) {
     printk(KERN_WARNING DEVICE_NAME "%d: the sysfs input for led is supposed to be 0 or 1, but was: %d\n", MINOR(ld->nxt_sense_device_data.devt), new_led);
   } else {
     /* See comments in touch.c for why to use mutex_lock instead of mutex_trylock and return -EBUSY */
