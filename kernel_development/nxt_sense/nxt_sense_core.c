@@ -1,7 +1,3 @@
-/* TODO:
- * (see report... if you can obtain it...)
- */
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -452,8 +448,7 @@ static int __init nxt_sense_init_class(void)
   return 0;
 }
 
-static int __init nxt_sense_init(void)
-{
+static int __init nxt_sense_init(void) {
   printk(KERN_DEBUG DEVICE_NAME ": Initialising nxt_sense...\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
 
@@ -477,8 +472,7 @@ static int __init nxt_sense_init(void)
 }
 module_init(nxt_sense_init);
 
-static void __exit nxt_sense_exit(void)
-{
+static void __exit nxt_sense_exit(void) {
   int p[NUMBER_OF_PORTS] = {0, 0, 0, 0};
   update_port_cfg(p);
 
