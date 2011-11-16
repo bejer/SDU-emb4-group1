@@ -20,9 +20,10 @@
 # #KERNELDIR = /home/michael/embedded/emb4/overo-oe-guide/build/tmp/work/overo-angstrom-linux-gnueabi/linux-omap3-2.6.36-r100/git
 export = /home/michael/Temp/SDU-emb4-group1
 # cross-compile module makefile
+NAME := leddev
 
 ifneq ($(KERNELRELEASE),)
-    obj-m := leddev.o
+    obj-m := $(NAME).o
 else
     PWD := $(shell pwd)
 
@@ -34,9 +35,11 @@ else
 endif
 
 install:
-	cp leddev.ko $(export)/export/own_modules
+	cp $(NAME).ko $(EMB4ROOT)/export/own_modules
 
+.PHONY: clean
 clean:
-	-rm *.o *.mod.c modules.order Module.symvers .leddev* .tmp_versions
+	-rm $(NAME).o $(NAME).ko $(NAME).mod.c $(NAME).mod.o .$(NAME).mod.o.cmd .$(NAME).ko.cmd modules.order Module.symvers
+	-rm -r .tmp_versions
 
 endif
