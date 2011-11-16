@@ -35,7 +35,7 @@ else
 endif
 
 install:
-	cp $(NAME).ko $(EMB4ROOT)/export/own_modules
+	cp $(NAME).ko $(export)/export/own_modules
 
 .PHONY: clean
 clean:
