@@ -14,36 +14,42 @@
 
 #define USER_BUFF_SIZE 128
 
+/***********************************************************************
+ *
+ * SPI bus parameters
+ *
+ ***********************************************************************/
 #define SPI_BUS 1
 #define SPI_BUS_CS0 0
 #define SPI_BUS_SPEED 3000000
 #define SPI_BITS_PER_WORD 8
-#define DEVICE_NAME "gumnxtadc"
+/* SPI definements for our code */
+#define SPI_DEVICE_IS_NULL -1
+#define SPI_MASTER_IS_NULL -2
+#define SPI_BUFF_SIZE 4
 
-/* It supports 8 channels, but only 5 channels are connected to something useful for now */
-#define NO_ADC_CHANNELS 5
-
-//Sensor1 ADC IN0
+/***********************************************************************
+ *
+ * ADC parameters
+ *
+ ***********************************************************************/
+/* ADC hardware addressing */
 #define ADC_CHANNEL0 0x00
 #define ADC_CHANNEL1 0x08
 #define ADC_CHANNEL2 0x10
 #define ADC_CHANNEL3 0x18
-//Voltage divider / voltage measurement
+/* Voltage divider / voltage measurement */
 #define ADC_CHANNEL4 0x20
-// Currently no specified use on channel 5-7
+/* Currently no specified use on channel 5-7 */
 #define ADC_CHANNEL5 0x28
 #define ADC_CHANNEL6 0x30
 #define ADC_CHANNEL7 0x38
-
-#define SPI_DEVICE_IS_NULL -1
-#define SPI_MASTER_IS_NULL -2
-
-#define SPI_BUFF_SIZE 4
+/* It supports 8 channels, but only 5 channels are connected to something useful for now */
+#define NO_ADC_CHANNELS 5
 
 /* Level shifter gpio */
 #define GPIO_1OE 10
-
-#define number_of_devices 1
+#define DEVICE_NAME "adc"
 
 DEFINE_MUTEX(adc_mutex);
 
@@ -71,7 +77,12 @@ static struct spi_control spi_ctl;
 static struct adc_dev adc_dev;
 static struct adc_info adc_info[NO_ADC_CHANNELS];
 
-
+/***********************************************************************
+ *
+ * SPI utility functions for packaging messages and communicating with
+ * the SPI subsystem
+ *
+ ***********************************************************************/
 static void spi_prepare_message(int channel) {
   u8 adc_channel;
   spi_message_init(&spi_ctl.msg);
@@ -103,7 +114,7 @@ static void spi_prepare_message(int channel) {
     break;
   default:
     adc_channel = ADC_CHANNEL0;
-    // signal some sort of error?
+    /* signal some sort of error? */
   }
 
   spi_ctl.tx_buff[0] = adc_channel;
@@ -128,13 +139,18 @@ static int spi_do_message(int channel) {
 
   spi_prepare_message(channel);
 
-  /* sync'ed spi communication for now */
+  /* sync'ed SPI communication for now */
   status = spi_sync(adc_dev.spi_device, &spi_ctl.msg);
 
   return status;
 }
 
-/* Every sampling bounces through this function - taking care of concurrency here to avoid having multiple clients play around in the same data... */
+/***********************************************************************
+ *
+ * Hook for obtaining an ADC sample from other modules
+ *
+ ***********************************************************************/
+/* Every sampling bounces through this function - taking care of concurrency here to avoid having multiple clients playing around in the same data... */
 /* Returns zero on success, else a negative error code */
 static int adc_sample_channel(int channel, int *data) {
   int status;
@@ -160,9 +176,13 @@ static int adc_sample_channel(int channel, int *data) {
 
   return status;
 }
-
 EXPORT_SYMBOL(adc_sample_channel);
 
+/***********************************************************************
+ *
+ * File operations for the /dev/adc# files
+ *
+ ***********************************************************************/
 static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
@@ -174,7 +194,6 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
     return -EFAULT;
 
   if (*offp > 0){
-    printk(KERN_DEBUG "offp: %lld",*offp); 
     return 0;
   }
 
@@ -194,7 +213,7 @@ static ssize_t adc_read(struct file *filp, char __user *buff, size_t count, loff
     count = len;
 
   if (copy_to_user(buff, adc_dev.user_buff, count))  {
-    printk(KERN_DEBUG "adc_read(): copy_to_user() failed\n");
+    printk(KERN_ERR DEVICE_NAME ": copy_to_user() failed\n");
     status = -EFAULT;
   } else {
     *offp += count;
@@ -212,6 +231,17 @@ static int adc_open(struct inode *inode, struct file *filp) {
   return 0;
 }
 
+static const struct file_operations adc_fops = {
+  .owner =	THIS_MODULE,
+  .read = 	adc_read,
+  .open =      	adc_open,	
+};
+
+/***********************************************************************
+ *
+ * SPI initialisation and setup functions
+ *
+ ***********************************************************************/
 static int adc_probe(struct spi_device *spi_device) {
   adc_dev.spi_device = spi_device;
 
@@ -224,6 +254,15 @@ static int adc_remove(struct spi_device *spi_device) {
   return 0;
 }
 
+static struct spi_driver spi_driver = {
+  .driver = {
+    .name =	DEVICE_NAME,
+    .owner = THIS_MODULE,
+  },
+  .probe = adc_probe,
+  .remove = __devexit_p(adc_remove),	
+};
+
 static int __init add_adc_device_to_bus(void) {
   struct spi_master *spi_master;
   struct spi_device *spi_device;
@@ -234,14 +273,13 @@ static int __init add_adc_device_to_bus(void) {
   /* This call returns a refcounted pointer to the relevant spi_master - the caller must release this pointer(device_put()) */	
   spi_master = spi_busnum_to_master(SPI_BUS);
   if (!spi_master) {
-    printk(KERN_ALERT "spi_busnum_to_master(%d) returned NULL\n", SPI_BUS);
-    printk(KERN_ALERT "Missing modprobe omap2_mcspi?\n");
+    printk(KERN_CRIT DEVICE_NAME ": spi_busnum_to_master(%d) returned NULL\nMissing modprobe omap2_mcspi?\n", SPI_BUS);
     return -1;
   }
 
   spi_device = spi_alloc_device(spi_master);
   if (!spi_device) {
-    printk(KERN_ALERT "spi_alloc_device() failed\n");
+    printk(KERN_CRIT DEVICE_NAME ": spi_alloc_device() failed\n");
     return -1;
   }
 
@@ -258,10 +296,10 @@ static int __init add_adc_device_to_bus(void) {
 
     /* 
      * There is already a device configured for this bus.cs  
-     * It is okay if it us, otherwise complain and fail.
+     * It is okay if it ours, otherwise complain and fail.
      */
     if (pdev->driver && pdev->driver->name && strcmp(DEVICE_NAME, pdev->driver->name)) {
-      printk(KERN_ALERT "Driver [%s] already registered for %s\n", pdev->driver->name, buff);
+      printk(KERN_CRIT DEVICE_NAME ": Driver [%s] already registered for %s\n", pdev->driver->name, buff);
       status = -1;
     } 
   } else {
@@ -277,7 +315,7 @@ static int __init add_adc_device_to_bus(void) {
     if (status < 0) {
       /* If spi_device is not added then decrement the refcount */	
       spi_dev_put(spi_device);
-      printk(KERN_ALERT "spi_add_device() failed: %d\n", status);		
+      printk(KERN_CRIT DEVICE_NAME ": spi_add_device() failed: %d\n", status);		
     }				
   }
   /* See comment for spi_busnum_to_master */
@@ -285,15 +323,6 @@ static int __init add_adc_device_to_bus(void) {
 
   return status;
 }
-
-static struct spi_driver spi_driver = {
-  .driver = {
-    .name =	DEVICE_NAME,
-    .owner = THIS_MODULE,
-  },
-  .probe = adc_probe,
-  .remove = __devexit_p(adc_remove),	
-};
 
 static int __init init_spi(void) {
   int error;
@@ -312,13 +341,13 @@ static int __init init_spi(void) {
 
   error = spi_register_driver(&spi_driver);
   if (error < 0) {
-    printk(KERN_ALERT "spi_register_driver() failed %d\n", error);
+    printk(KERN_CRIT DEVICE_NAME ": spi_register_driver() failed %d\n", error);
     return error;
   }
 
   error = add_adc_device_to_bus();
   if (error < 0) {
-    printk(KERN_ALERT "add_adc_to_bus() failed\n");
+    printk(KERN_CRIT DEVICE_NAME ": add_adc_to_bus() failed\n");
     spi_unregister_driver(&spi_driver);
     return error;
   }
@@ -340,12 +369,11 @@ static int __init init_spi(void) {
   return error;
 }
 
-static const struct file_operations adc_fops = {
-  .owner =	THIS_MODULE,
-  .read = 	adc_read,
-  .open =		adc_open,	
-};
-
+/***********************************************************************
+ *
+ * Module initialisation and teardown functions
+ *
+ ***********************************************************************/
 static int __init init_cdev(void) {
   int error;
 
@@ -353,7 +381,7 @@ static int __init init_cdev(void) {
 
   error = alloc_chrdev_region(&adc_dev.devt, 0, NO_ADC_CHANNELS, DEVICE_NAME);
   if (error < 0) {
-    printk(KERN_ALERT "alloc_chrdev_region() failed: %d \n", 
+    printk(KERN_CRIT DEVICE_NAME ": alloc_chrdev_region() failed: %d \n", 
 	   error);
     return -1;
   }
@@ -363,7 +391,7 @@ static int __init init_cdev(void) {
 
   error = cdev_add(&adc_dev.cdev, adc_dev.devt, NO_ADC_CHANNELS);
   if (error) {
-    printk(KERN_ALERT "cdev_add() failed: %d\n", error);
+    printk(KERN_CRIT DEVICE_NAME ": cdev_add() failed: %d\n", error);
     unregister_chrdev_region(adc_dev.devt, 1);
     return -1;
   }	
@@ -378,7 +406,7 @@ static int __init init_class(void) {
   adc_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
 
   if (IS_ERR(adc_dev.class)) {
-    printk(KERN_ALERT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(adc_dev.class));
+    printk(KERN_CRIT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(adc_dev.class));
     return -1;
   }
 
@@ -386,7 +414,7 @@ static int __init init_class(void) {
     adc_dev.device[i] = device_create(adc_dev.class, NULL, MKDEV(MAJOR(adc_dev.devt), i), NULL, "gumnxtadc%d", i);
 
     if (IS_ERR(adc_dev.device)) {
-      printk(KERN_ALERT "device_create(..., %s) failed: %ld\n", DEVICE_NAME, PTR_ERR(adc_dev.device));
+      printk(KERN_CRIT DEVICE_NAME ": device_create(..., %s) failed: %ld\n", DEVICE_NAME, PTR_ERR(adc_dev.device));
       goto failed_device_creation;
     }
   }
@@ -405,22 +433,21 @@ static int __init init_class(void) {
 static int __init init_level_shifters(void) {
 
   if (gpio_request(GPIO_1OE, "SPI1OE")) {
-    printk(KERN_ALERT "gpio_request failed for SPI1OE\n");
+    printk(KERN_CRIT DEVICE_NAME ": gpio_request failed for SPI1OE\n");
     goto init_pins_fail_1;
   }
 
 
   if (register_use_of_level_shifter()) {
-    printk(KERN_ALERT DEVICE_NAME ": register_use_of_level_shifter failed\n");
+    printk(KERN_CRIT DEVICE_NAME ": register_use_of_level_shifter failed\n");
     goto init_pins_fail_2;
   }
 
   if (gpio_direction_output(GPIO_1OE, 0)) {
-    printk(KERN_ALERT "gpio_direction_output GPIO_1OE failed\n");
+    printk(KERN_CRIT DEVICE_NAME ": gpio_direction_output GPIO_1OE failed\n");
     goto init_pins_fail_3;
   }
 
-  //  goto init_pins_fail_1;
   return 0;
 
  init_pins_fail_3:
@@ -505,4 +532,3 @@ static void __exit adc_exit(void) {
 module_exit(adc_exit);
 MODULE_AUTHOR("Group1");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("0.1");

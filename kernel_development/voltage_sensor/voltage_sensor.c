@@ -27,6 +27,11 @@ struct voltage_sensor_dev {
 
 static struct voltage_sensor_dev voltage_sensor_dev;
 
+/***********************************************************************
+ *
+ * File operations for the /dev/voltage_sensor file
+ *
+ ***********************************************************************/
 static ssize_t voltage_sensor_read(struct file *filp, char __user *buff, size_t count, loff_t *offp) {
   size_t len;
   ssize_t status = 0;
@@ -47,7 +52,7 @@ static ssize_t voltage_sensor_read(struct file *filp, char __user *buff, size_t 
   if (adc_sample_status != 0) {
     /* Signal I/O error */
     /* Could also use the error code given from adc_sample_channel... */
-    printk(DEVICE_NAME ": error while sampling adc channel %d: %d\n", ADC_CHANNEL_VOLTAGE_SENSOR, adc_sample_status);
+    printk(KERN_ERR DEVICE_NAME ": error while sampling adc channel %d: %d\n", ADC_CHANNEL_VOLTAGE_SENSOR, adc_sample_status);
     return -EIO;
   }
 
@@ -59,7 +64,7 @@ static ssize_t voltage_sensor_read(struct file *filp, char __user *buff, size_t 
     count = len;
 
   if (copy_to_user(buff, output, count))  {
-    printk(KERN_ALERT DEVICE_NAME ": copy_to_user in voltage_sensor_read failed\n");
+    printk(KERN_ERR DEVICE_NAME ": copy_to_user in voltage_sensor_read failed\n");
     status = -EFAULT;
   } else {
     *offp += count;
@@ -74,6 +79,11 @@ static const struct file_operations voltage_sensor_fops = {
   .read = 	voltage_sensor_read,
 };
 
+/***********************************************************************
+ *
+ * Module initialisation and teardown functions
+ *
+ ***********************************************************************/
 static int __init voltage_sensor_init_cdev(void) {
   int error;
 
@@ -81,7 +91,7 @@ static int __init voltage_sensor_init_cdev(void) {
 
   error = alloc_chrdev_region(&voltage_sensor_dev.devt, 0, NUMBER_OF_DEVICES, DEVICE_NAME);
   if (error < 0) {
-    printk(KERN_ALERT DEVICE_NAME ": alloc_chrdev_region() failed: %d\n", 
+    printk(KERN_CRIT DEVICE_NAME ": alloc_chrdev_region() failed: %d\n", 
 	   error);
     return -1;
   }
@@ -91,7 +101,7 @@ static int __init voltage_sensor_init_cdev(void) {
 
   error = cdev_add(&voltage_sensor_dev.cdev, voltage_sensor_dev.devt, 1);
   if (error < 0) {
-    printk(KERN_ALERT DEVICE_NAME ": cdev_add() failed: %d\n", error);
+    printk(KERN_CRIT DEVICE_NAME ": cdev_add() failed: %d\n", error);
     unregister_chrdev_region(voltage_sensor_dev.devt, 1);
     return -1;
   }	
@@ -103,13 +113,13 @@ static int __init voltage_sensor_init_class(void) {
   voltage_sensor_dev.class = class_create(THIS_MODULE, DEVICE_NAME);
 
   if (IS_ERR(voltage_sensor_dev.class)) {
-    printk(KERN_ALERT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(voltage_sensor_dev.class));
+    printk(KERN_CRIT DEVICE_NAME ": class_create() failed: %ld\n", PTR_ERR(voltage_sensor_dev.class));
     return -1;
   }
 
   voltage_sensor_dev.device = device_create(voltage_sensor_dev.class, NULL, voltage_sensor_dev.devt, NULL, DEVICE_NAME);
   if (IS_ERR(voltage_sensor_dev.device)) {
-    printk(KERN_ALERT DEVICE_NAME ": device_create() failed: %ld\n", PTR_ERR(voltage_sensor_dev.device));
+    printk(KERN_CRIT DEVICE_NAME ": device_create() failed: %ld\n", PTR_ERR(voltage_sensor_dev.device));
     class_destroy(voltage_sensor_dev.class);
     return -1;
   }
@@ -147,4 +157,3 @@ static void __exit voltage_sensor_exit(void) {
 module_exit(voltage_sensor_exit);
 
 MODULE_LICENSE("GPL");
-

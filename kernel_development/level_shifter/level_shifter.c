@@ -20,13 +20,19 @@ struct level_shifter {
 
 static struct level_shifter *level_shifter;
 
+/***********************************************************************
+ *
+ * Utility functions for initialising and uninitialising the
+ * level_shifter
+ *
+ ***********************************************************************/
 /* What to do when gpio_request fails? (see TODO at the top) */
 static void initialise_level_shifter(void) {
   if (gpio_request(GPIO_2OE, "LS2OE")) {
-    printk(KERN_ALERT DEVICE_NAME ": gpio_request failed for LS2OE\n");
+    printk(KERN_CRIT DEVICE_NAME ": gpio_request failed for LS2OE\n");
   } else {
     if (gpio_direction_output(GPIO_2OE, 0)) {
-      printk(KERN_ALERT DEVICE_NAME ": gpio_direction_output failed for LS2OE\n");
+      printk(KERN_CRIT DEVICE_NAME ": gpio_direction_output failed for LS2OE\n");
     }
   }
 
@@ -40,6 +46,11 @@ static void uninitialise_level_shifter(struct kref *kref) {
   level_shifter = NULL;
 }
 
+/***********************************************************************
+ *
+ * Hooks for registering and unregistering the use of the GPIO pin
+ *
+ ***********************************************************************/
 /* Returns 0 on success, else a negative error code (not implemented yet) */
 static int register_use_of_level_shifter(void) {
   mutex_lock(&ls_mutex);
@@ -63,7 +74,7 @@ static int register_use_of_level_shifter(void) {
 static int unregister_use_of_level_shifter(void) {
   mutex_lock(&ls_mutex);
   if (!level_shifter) {
-    printk(KERN_ALERT DEVICE_NAME ": trying to unregister without a register (or someone has unregistered twice), anyhow level_shifter is NULL!\n");
+    printk(KERN_WARNING DEVICE_NAME ": trying to unregister without a register (or someone has unregistered twice), anyhow level_shifter is NULL!\n");
     return -1;
   }
   kref_put(&level_shifter->refcount, uninitialise_level_shifter);
@@ -75,5 +86,18 @@ static int unregister_use_of_level_shifter(void) {
 
 EXPORT_SYMBOL(register_use_of_level_shifter);
 EXPORT_SYMBOL(unregister_use_of_level_shifter);
+
+/***********************************************************************
+ *
+ * Module exit function to make sure the module cleans up after itself
+ *
+ ***********************************************************************/
+static void __exit level_shifter_exit(void) {
+  while (level_shifter) {
+    uninitialise_level_shifter(NULL);
+  }
+}
+
+module_exit(level_shifter_exit);
 
 MODULE_LICENSE("GPL");
