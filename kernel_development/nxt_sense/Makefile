@@ -18,8 +18,10 @@ endif
 install:
 	cp $(NAME).ko $(EMB4ROOT)/export/own_modules
 
+.PHONY: clean
 clean:
-	-rm *.o *.mod.c modules.order Module.symvers .$(NAME)* .tmp_versions
+	-rm $(NAME).o $(NAME).ko $(NAME).mod.c $(NAME).mod.o .$(NAME).mod.o.cmd .$(NAME).ko.cmd modules.order Module.symvers $(NAME-OBJS)
+	-rm -r .tmp_versions
 
 endif
 

@@ -16,3 +16,10 @@ install:
 	(cd adc_test; make install)
 	(cd nxt_sense; make install)
 	(cd level_shifter; make install)
+
+.PHONY: clean
+clean:
+	(cd adc; make clean)
+	(cd adc_test; make clean)
+	(cd nxt_sense; make clean)
+	(cd level_shifter; make clean)

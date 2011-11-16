@@ -45,3 +45,10 @@ xport: archive
 
 default:
 	echo "Valid targets are archive, build, deploy, format, umount, xport"
+
+.PHONY: clean_modules
+# clean_modules should contain the same lines as in the make target build
+clean_modules:
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/leddev; make; make clean)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/nxtts; make; make clean)
+	(source $(home)/env/kernel-dev.txt; cd $(home)/kernel_development/; make; make clean)

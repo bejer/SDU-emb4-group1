@@ -1,7 +1,8 @@
 # cross-compile module makefile
+NAME := nxtts
 
 ifneq ($(KERNELRELEASE),)
-    obj-m := nxtts.o
+    obj-m := $(NAME).o
 else
     PWD := $(shell pwd)
 
@@ -13,10 +14,12 @@ else
 endif
 
 install:
-	cp nxtts.ko $(EMB4ROOT)/export/own_modules
+	cp $(NAME).ko $(EMB4ROOT)/export/own_modules
 
+.PHONY: clean
 clean:
-	-rm *.o *.mod.c modules.order Module.symvers .nxtts* .tmp_versions
+	-rm $(NAME).o $(NAME).ko $(NAME).mod.c $(NAME).mod.o .$(NAME).mod.o.cmd .$(NAME).ko.cmd modules.order Module.symvers
+	-rm -r .tmp_versions
 
 endif
 
