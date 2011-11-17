@@ -1,3 +1,9 @@
+/* TODO:
+ * - Remove the knowledge of which port an instance of this touch_data / touch sensor is using:
+ *     - Maybe make use of a linked list instead of a static defined array with 4 touch_data objects.
+ *     - Create the touch_data objects dynamically and free them again to avoid wasting memory.
+ */
+
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <asm/uaccess.h>
@@ -15,7 +21,7 @@
 
 /* nxt_sense_device_data has to be placed at the top/front of the struct, in order of having polymorphy in C - makes it possible to obtain a pointer to touch_data using only one container_of macro on nxt_sense_device_data in the device open, read and release calls/fileoperations */
 struct touch_data {
-  struct nxt_sense_device_data nxt_sense_device_data; /* Has to be placed at the beginning, see above comment! */
+  struct nxt_sense_device_data nxt_sense_device_data; /* Has to be placed at the beginning, see comment above! */
   struct device_attribute dev_attr_threshold;
   struct device_attribute dev_attr_raw_sample;
   int port;
