@@ -21,8 +21,7 @@ install:
 
 .PHONY: clean
 clean:
-	-rm $(NAME).o $(NAME).ko $(NAME).mod.c $(NAME).mod.o .$(NAME).mod.o.cmd .$(NAME).ko.cmd modules.order Module.symvers $(NAME-OBJS)
-	-rm -r .tmp_versions
+	-rm $(NAME).o $(NAME).ko $(NAME).mod.c $(NAME).mod.o .$(NAME).mod.o.cmd .$(NAME).ko.cmd modules.order $(NAME-OBJS)
 
 endif
 
