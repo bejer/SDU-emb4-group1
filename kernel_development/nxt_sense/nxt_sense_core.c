@@ -11,6 +11,7 @@
 #include <asm/uaccess.h>
 #include <mach/gpio.h>
 
+#include "../level_shifter/level_shifter.h"
 #include "../adc/adc.h"
 #include "nxt_sense_core.h"
 /* Include the add and remove functions of the submodules that are supported */
@@ -376,6 +377,16 @@ static const struct file_operations nxt_sense_fops = {
     goto init_gpio_pins_fail_##_port;					\
   }
 
+static int __init nxt_sense_level_shifter_init(void) {
+  if (register_use_of_level_shifter(LS_U3_1)) {
+    printk(KERN_CRIT DEVICE_NAME ": register_use_of_level_shifter failed for LS_U3_1\n");
+    return -1;
+  }
+
+  return 0;
+}
+
+
 static int __init nxt_sense_init_gpio_pins(void) {
   GPIO_INIT_MACRO(1);
   GPIO_INIT_MACRO(2);
@@ -452,20 +463,32 @@ static int __init nxt_sense_init(void) {
   printk(KERN_DEBUG DEVICE_NAME ": Initialising nxt_sense...\n");
   memset(&nxt_sense_dev, 0, sizeof(nxt_sense_dev));
 
-  if (nxt_sense_init_gpio_pins() < 0)
+  if (nxt_sense_level_shifter_init() < 0)
     goto fail_1;
+
+  if (nxt_sense_init_gpio_pins() < 0)
+    goto fail_2;
 
   if (nxt_sense_init_cdev() < 0) 
-    goto fail_1;
+    goto fail_3;
 
   if (nxt_sense_init_class() < 0)  
-    goto fail_2;
+    goto fail_4;
 
   return 0;
 
- fail_2:
+ fail_4:
   cdev_del(&nxt_sense_dev.cdev);
   unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
+
+ fail_3:
+  gpio_free(GPIO_SCL_4);
+  gpio_free(GPIO_SCL_3);
+  gpio_free(GPIO_SCL_2);
+  gpio_free(GPIO_SCL_1);
+
+ fail_2:
+  unregister_use_of_level_shifter(LS_U3_1);
 
  fail_1:
   return -1;
@@ -476,17 +499,18 @@ static void __exit nxt_sense_exit(void) {
   int p[NUMBER_OF_PORTS] = {0, 0, 0, 0};
   update_port_cfg(p);
 
-  gpio_free(GPIO_SCL_1);
-  gpio_free(GPIO_SCL_2);
-  gpio_free(GPIO_SCL_3);
-  gpio_free(GPIO_SCL_4);
-
   device_remove_file(nxt_sense_dev.device, &dev_attr_config);
   device_destroy(nxt_sense_dev.class, MKDEV(MAJOR(nxt_sense_dev.devt), NXT_SENSE_MINOR));
   class_destroy(nxt_sense_dev.class);
 
   cdev_del(&nxt_sense_dev.cdev);
   unregister_chrdev_region(nxt_sense_dev.devt, NUMBER_OF_DEVICES);
+
+  gpio_free(GPIO_SCL_1);
+  gpio_free(GPIO_SCL_2);
+  gpio_free(GPIO_SCL_3);
+  gpio_free(GPIO_SCL_4);
+  unregister_use_of_level_shifter(LS_U3_1);
 
   printk(KERN_DEBUG DEVICE_NAME ": Exiting nxt_sense...\n");
 }
