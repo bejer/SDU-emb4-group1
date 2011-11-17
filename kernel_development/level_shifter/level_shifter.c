@@ -1,5 +1,7 @@
-/* TODO:
- * Make sure the "bad" scenarios are handled correctly (such as what to do in initialise_level_shifter if gpio_request fails - should it uninitialise itself and free the level_shifter, and what about error codes?)
+/* Notes:
+ * - The key point of using kref as the refcount has disappeared after a rewrite to support multiple level shifters, but it remains in the code as it is still used for refcounting, but could easily be replaced by a simple int, given concurrency issues are kept taken care of.
+ * - The functionality could be expanded to also include the possibility of enabling and disabling the level shifter (setting OE to low or high respectively).
+ * - Currently there is only one mutex that guards the two entry points {register|unregister}_use_of_level_shifter, but could be replaced by one mutex for each level_shifter so two modules wanting different level shifters don't have to wait on eachother - but favoring the size in size vs performance tradeoff for now (given that the activity of wanting to register/unregister the use of a level shifter is rare).
  */
 #include <linux/module.h>
 #include <mach/gpio.h>
@@ -9,75 +11,104 @@
 
 #define DEVICE_NAME "level_shifter"
 
-/* Only one level shifter (2OE on it) that is shared for now */
-#define GPIO_2OE 71
+/* The current naming scheme only requires 10 bytes for the labels */
+#define LS_LABEL_SIZE 10
+
+/* The level shifter is referenced to as U3 on the gumstixnxt schematic */
+#define GPIO_U3_1OE 10
+#define GPIO_U3_2OE 71
+#define NUMBER_OF_LEVEL_SHIFTERS 2
+enum level_shifter_tag {U3_1 = 0, U3_2};
 
 DEFINE_MUTEX(ls_mutex);
 
 struct level_shifter {
+  int gpio_pin;
+  bool activated; /* Bookkeeping of whether or not the gpio_pin is currently requested (using gpio_request()) */
+  char label[LS_LABEL_SIZE];
   struct kref refcount;
 };
 
-static struct level_shifter *level_shifter;
+static struct level_shifter level_shifter[NUMBER_OF_LEVEL_SHIFTERS];
 
 /***********************************************************************
  *
- * Utility functions for initialising and uninitialising the
- * level_shifter
+ * Utility functions for activating and deactivating the sub level
+ * shifters
  *
  ***********************************************************************/
-/* What to do when gpio_request fails? (see TODO at the top) */
-static void initialise_level_shifter(void) {
-  if (gpio_request(GPIO_2OE, "LS2OE")) {
-    printk(KERN_CRIT DEVICE_NAME ": gpio_request failed for LS2OE\n");
+static int activate_sub_level_shifter(struct level_shifter *ls) {
+  int status = 0;
+  if (gpio_request(ls->gpio_pin, ls->label)) {
+    printk(KERN_CRIT DEVICE_NAME ": gpio_request failed for pin %d labelled %s\n", ls->gpio_pin, ls->label);
+    status = -1;
   } else {
-    if (gpio_direction_output(GPIO_2OE, 0)) {
-      printk(KERN_CRIT DEVICE_NAME ": gpio_direction_output failed for LS2OE\n");
+    ls->activated = true;
+    if (gpio_direction_output(ls->gpio_pin, 0)) {
+      printk(KERN_CRIT DEVICE_NAME ": gpio_direction_output failed for pin %d labelled %s\n", ls->gpio_pin, ls->label);
+      /* Free the gpio pin again if it can't be set to low */
+      gpio_free(ls->gpio_pin);
+      status = -2;
     }
   }
 
-  kref_init(&level_shifter->refcount);
-}
+  return status;
+}  
 
-static void uninitialise_level_shifter(struct kref *kref) {
-  gpio_free(GPIO_2OE);
+static void deactivate_sub_level_shifter(struct kref *kref) {
+  struct level_shifter *ls;
+  ls = container_of(kref, struct level_shifter, refcount);
 
-  kfree(level_shifter);
-  level_shifter = NULL;
+  gpio_free(ls->gpio_pin);
+  ls->activated = false;
 }
 
 /***********************************************************************
  *
- * Hooks for registering and unregistering the use of the GPIO pin
+ * Hooks for registering and unregistering the use of the GPIO pin from
+ * other modules
  *
  ***********************************************************************/
-/* Returns 0 on success, else a negative error code (not implemented yet) */
-static int register_use_of_level_shifter(void) {
+/* Returns 0 on success, else a negative error code */
+static int register_use_of_level_shifter(const enum level_shifter_tag lst) {
+  struct level_shifter *ls;
   mutex_lock(&ls_mutex);
 
-  if (!level_shifter) {
-    level_shifter = kmalloc(sizeof(struct level_shifter), GFP_KERNEL);
-    if (!level_shifter) {
-      mutex_unlock(&ls_mutex);
-      return -ENOMEM;
-    }
-    initialise_level_shifter();
-  } else {
-    kref_get(&level_shifter->refcount);
+  if (lst < 0 || lst >= NUMBER_OF_LEVEL_SHIFTERS) {
+    mutex_unlock(&ls_mutex);
+    printk(KERN_WARNING DEVICE_NAME ": Trying to register the use of a level shifter that is not known: %d\n", lst);
+    return -1;
   }
+
+  ls = &level_shifter[lst];
+
+  if (!ls->activated) {
+    if (activate_sub_level_shifter(ls) != 0) {
+      /* Could not get the level_shifter up and running... problems with GPIO, see activate_sub_level_shifter for more info */
+      mutex_unlock(&ls_mutex);
+      return -2;
+    }
+  }
+
+  kref_get(&ls->refcount);
 
   mutex_unlock(&ls_mutex);
 
   return 0;  
 }
 
-static int unregister_use_of_level_shifter(void) {
+static int unregister_use_of_level_shifter(const enum level_shifter_tag lst) {
+  struct level_shifter *ls;
   mutex_lock(&ls_mutex);
-  if (!level_shifter) {
-    printk(KERN_WARNING DEVICE_NAME ": trying to unregister without a register (or someone has unregistered twice), anyhow level_shifter is NULL!\n");
+
+  if (lst < 0 || lst >= NUMBER_OF_LEVEL_SHIFTERS) {
+    printk(KERN_WARNING DEVICE_NAME ": Trying to unregister the use of a level shifter that is not known: %d\n", lst);
     return -1;
   }
-  kref_put(&level_shifter->refcount, uninitialise_level_shifter);
+
+  ls = &level_shifter[lst];
+
+  kref_put(&ls->refcount, deactivate_sub_level_shifter);
 
   mutex_unlock(&ls_mutex);
 
@@ -89,15 +120,43 @@ EXPORT_SYMBOL(unregister_use_of_level_shifter);
 
 /***********************************************************************
  *
- * Module exit function to make sure the module cleans up after itself
+ * Module initialisation and exit functions to make sure the module
+ * is set up correctly and cleans up after itself
  *
  ***********************************************************************/
-static void __exit level_shifter_exit(void) {
-  while (level_shifter) {
-    uninitialise_level_shifter(NULL);
-  }
+static int __init level_shifter_init(void) {
+  mutex_lock(&ls_mutex);
+
+  level_shifter[0].gpio_pin = GPIO_U3_1OE;
+  level_shifter[0].activated = false;
+  strlcpy(level_shifter[0].label, "LS_U3_1OE", LS_LABEL_SIZE);
+  kref_init(&level_shifter[0].refcount);
+
+  level_shifter[1].gpio_pin = GPIO_U3_2OE;
+  level_shifter[1].activated = false;
+  strlcpy(level_shifter[1].label, "LS_U3_2OE", LS_LABEL_SIZE);
+  kref_init(&level_shifter[1].refcount);
+
+  mutex_unlock(&ls_mutex);
+
+  return 0;
 }
 
+static void __exit level_shifter_exit(void) {
+  int i;
+
+  mutex_lock(&ls_mutex);
+
+  for (i = 0; i < NUMBER_OF_LEVEL_SHIFTERS; ++i) {
+    if (level_shifter[i].activated) {
+      printk(KERN_DEBUG DEVICE_NAME ": Upon exit level_shifter[%d] was still activated! (gpio pin: %d label: %s\n", i, level_shifter[i].gpio_pin, level_shifter[i].label);
+    }
+  }
+
+  mutex_unlock(&ls_mutex);
+}
+
+module_init(level_shifter_init);
 module_exit(level_shifter_exit);
 
 MODULE_LICENSE("GPL");
