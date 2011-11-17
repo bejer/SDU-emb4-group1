@@ -1,7 +1,9 @@
 /* Notes:
  * - The key point of using kref as the refcount has disappeared after a rewrite to support multiple level shifters, but it remains in the code as it is still used for refcounting, but could easily be replaced by a simple int, given concurrency issues are kept taken care of.
  * - The functionality could be expanded to also include the possibility of enabling and disabling the level shifter (setting OE to low or high respectively).
- * - Currently there is only one mutex that guards the two entry points {register|unregister}_use_of_level_shifter, but could be replaced by one mutex for each level_shifter so two modules wanting different level shifters don't have to wait on eachother - but favoring the size in size vs performance tradeoff for now (given that the activity of wanting to register/unregister the use of a level shifter is rare).
+ * - Currently there is only one mutex that guards the two entry points {register|unregister}_use_of_level_shifter, but could be replaced by one mutex for each level_shifter so two modules wanting different level shifters don't have to wait on each other - but favoring the size in size vs performance tradeoff for now (given that the activity of wanting to register/unregister the use of a level shifter is rare).
+ *
+ * - The functionality of this module could be greatly reduced, if just wanting a level shifter module that requests the GPIOs upon loading and frees them again when unloading, given that the level shifters should be enabled all the time
  */
 #include <linux/module.h>
 #include <mach/gpio.h>
