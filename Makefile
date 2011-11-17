@@ -52,6 +52,11 @@ transfer_to_gumstix:
 	scp $(home)/module_loading_utility/load_modules.sh root@10.194.63.51:.
 	scp $(home)/module_loading_utility/unload_modules.sh root@10.194.63.51:.
 
+transfer_to_qemu:
+	scp -P 22231 -r $(home)/export/own_modules/ root@127.0.0.1:/
+	scp -P 22231 $(home)/module_loading_utility/load_modules.sh root@127.0.0.1:.
+	scp -P 22231 $(home)/module_loading_utility/unload_modules.sh root@127.0.0.1:.
+
 default:
 	echo "Valid targets are archive, build, deploy, format, umount, xport"
 
