@@ -434,33 +434,22 @@ static int __init init_class(void) {
 }
 
 static int __init init_level_shifters(void) {
-
-  if (gpio_request(GPIO_1OE, "SPI1OE")) {
-    printk(KERN_CRIT DEVICE_NAME ": gpio_request failed for SPI1OE\n");
+  if (register_use_of_level_shifter(LS_U3_1)) {
+    printk(KERN_CRIT DEVICE_NAME ": register_use_of_level_shifter failed for LS_U3_1\n");
     goto init_pins_fail_1;
   }
 
-
-  if (register_use_of_level_shifter()) {
-    printk(KERN_CRIT DEVICE_NAME ": register_use_of_level_shifter failed\n");
+  if (register_use_of_level_shifter(LS_U3_2)) {
+    printk(KERN_CRIT DEVICE_NAME ": register_use_of_level_shifter failed for LS_U3_2\n");
     goto init_pins_fail_2;
-  }
-
-  if (gpio_direction_output(GPIO_1OE, 0)) {
-    printk(KERN_CRIT DEVICE_NAME ": gpio_direction_output GPIO_1OE failed\n");
-    goto init_pins_fail_3;
   }
 
   return 0;
 
- init_pins_fail_3:
-  unregister_use_of_level_shifter();
-
  init_pins_fail_2:
-  gpio_free(GPIO_1OE);
+  unregister_use_of_level_shifter(LS_U3_1);
 
  init_pins_fail_1:
-
   return -1;
 }
 
@@ -491,8 +480,7 @@ static int __init init(void) {
   return 0;
 
  fail_4:
-  unregister_use_of_level_shifter();
-  gpio_free(GPIO_1OE);
+  /* init_level_shifters() cleans up after itself, if it should fail */
 
  fail_3:
   for (j = NO_ADC_CHANNELS; j >= 0; --j) {
@@ -529,8 +517,8 @@ static void __exit adc_exit(void) {
     kfree(spi_ctl.rx_buff);
 
   /* Release spi level shifter pins */
-  unregister_use_of_level_shifter();
-  gpio_free(GPIO_1OE);
+  unregister_use_of_level_shifter(LS_U3_1);
+  unregister_use_of_level_shifter(LS_U3_2);
 }
 module_exit(adc_exit);
 MODULE_AUTHOR("Group1");

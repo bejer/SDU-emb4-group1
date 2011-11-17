@@ -9,6 +9,8 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 
+#include "level_shifter.h"
+
 #define DEVICE_NAME "level_shifter"
 
 /* The current naming scheme only requires 10 bytes for the labels */
@@ -17,8 +19,8 @@
 /* The level shifter is referenced to as U3 on the gumstixnxt schematic */
 #define GPIO_U3_1OE 10
 #define GPIO_U3_2OE 71
+/* There is a dependency between the number of level shifters and the enum defined in level_shifter.h */
 #define NUMBER_OF_LEVEL_SHIFTERS 2
-enum level_shifter_tag {U3_1 = 0, U3_2};
 
 DEFINE_MUTEX(ls_mutex);
 
@@ -52,6 +54,9 @@ static int activate_sub_level_shifter(struct level_shifter *ls) {
     }
   }
 
+  /* Initialise kref / refcount: sets the refcount to 1 (this is part of a work around due to the context kref is used within and that kref_get doesn't work when the internal refcount is 0) */
+  kref_init(&ls->refcount);
+
   return status;
 }  
 
@@ -70,7 +75,7 @@ static void deactivate_sub_level_shifter(struct kref *kref) {
  *
  ***********************************************************************/
 /* Returns 0 on success, else a negative error code */
-static int register_use_of_level_shifter(const enum level_shifter_tag lst) {
+int register_use_of_level_shifter(const enum level_shifter_tag lst) {
   struct level_shifter *ls;
   mutex_lock(&ls_mutex);
 
@@ -88,16 +93,16 @@ static int register_use_of_level_shifter(const enum level_shifter_tag lst) {
       mutex_unlock(&ls_mutex);
       return -2;
     }
+  } else {
+    kref_get(&ls->refcount);
   }
-
-  kref_get(&ls->refcount);
 
   mutex_unlock(&ls_mutex);
 
   return 0;  
 }
 
-static int unregister_use_of_level_shifter(const enum level_shifter_tag lst) {
+int unregister_use_of_level_shifter(const enum level_shifter_tag lst) {
   struct level_shifter *ls;
   mutex_lock(&ls_mutex);
 
@@ -125,19 +130,15 @@ EXPORT_SYMBOL(unregister_use_of_level_shifter);
  *
  ***********************************************************************/
 static int __init level_shifter_init(void) {
-  mutex_lock(&ls_mutex);
-
   level_shifter[0].gpio_pin = GPIO_U3_1OE;
   level_shifter[0].activated = false;
   strlcpy(level_shifter[0].label, "LS_U3_1OE", LS_LABEL_SIZE);
-  kref_init(&level_shifter[0].refcount);
 
   level_shifter[1].gpio_pin = GPIO_U3_2OE;
   level_shifter[1].activated = false;
   strlcpy(level_shifter[1].label, "LS_U3_2OE", LS_LABEL_SIZE);
-  kref_init(&level_shifter[1].refcount);
 
-  mutex_unlock(&ls_mutex);
+  /* Leaving the kref / refcount objects uninitialised due to a workaround when using kref for bookkeeping and not actual object reference counting */
 
   return 0;
 }
@@ -145,15 +146,16 @@ static int __init level_shifter_init(void) {
 static void __exit level_shifter_exit(void) {
   int i;
 
-  mutex_lock(&ls_mutex);
-
   for (i = 0; i < NUMBER_OF_LEVEL_SHIFTERS; ++i) {
     if (level_shifter[i].activated) {
-      printk(KERN_DEBUG DEVICE_NAME ": Upon exit level_shifter[%d] was still activated! (gpio pin: %d label: %s\n", i, level_shifter[i].gpio_pin, level_shifter[i].label);
+      printk(KERN_DEBUG DEVICE_NAME ": Upon exit level_shifter[%d] was still activated! (gpio pin: %d label: %s and refcount: %d\n", i, level_shifter[i].gpio_pin, level_shifter[i].label, level_shifter[i].refcount.refcount.counter);
+      do {
+	if (unregister_use_of_level_shifter(i) != 0) {
+	  printk(KERN_DEBUG DEVICE_NAME ": Exit function failed to unregister level shifter %d\n", i);
+	}
+      } while (level_shifter[i].activated);
     }
   }
-
-  mutex_unlock(&ls_mutex);
 }
 
 module_init(level_shifter_init);
