@@ -1,3 +1,6 @@
+/* The SPI part is heavily inspired by Scott Ellis, see http://jumpnowtek.com/
+ */
+
 /* TODO:
  * - In adc_sample_channel(), make use of a macro/function to handle endianess e.g. use {le|be}16_to_cpu() for more portability (Point stolen from the adc128s022 driver created by Peter Madsen)
  */
