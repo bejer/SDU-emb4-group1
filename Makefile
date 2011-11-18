@@ -1,7 +1,6 @@
 #Setup the SD-card reader
 device := /dev/sdb
 #The location of the folders with the device drivers
-#home := /home/eholme/SDUEMB4/SDU-emb4-group1
 home := $(EMB4ROOT)
 #The location of the Open Embedded
 img := $(OVEROTOP)/tmp/deploy/glibc/images/overo
