@@ -51,19 +51,11 @@ int NXT_Sense_touch::MainSetup() {
   std::cout << "The PLAYER_BUMPER_CODE: " << PLAYER_BUMPER_CODE << std::endl;
   std::cout << "NXT_Sense Touch driver initialising - main setup" << std::endl;
 
-  device.open(path_to_device.c_str(), std::ifstream::in);
-  
-  if (!device.is_open()) {
-    return -1;
-  }
-
   return 0;
 }
 
 void NXT_Sense_touch::MainQuit() {
   std::cout << "NXT_Sense Touch driver shutdown" << std::endl;
-
-  device.close();
 }
 
 int NXT_Sense_touch::ProcessMessage(QueuePointer &resp_queue,
@@ -105,11 +97,13 @@ void NXT_Sense_touch::Main() {
   bumper_data.bumpers_count = 1;
   bumper_data.bumpers = new uint8_t[bumper_data.bumpers_count];
 
-  bumper_data.bumpers[0] = 1;
-
+#if 0
   player_bumper_geom_t geom;
   geom.bumper_def_count = bumper_data.bumpers_count;
   geom.bumper_def = new player_bumper_define_t[geom.bumper_def_count];
+#endif
+
+  bool bump = false;
 
   for (;;) {
     pthread_testcancel();
@@ -123,15 +117,26 @@ void NXT_Sense_touch::Main() {
     Publish(bumper_id, PLAYER_MSGTYPE_DATA, PLAYER_BUMPER_DATA_GEOM, &geom);
 #endif
 
-    std::cout << "Publishing player bumper data state" << std::endl;
-    this->Publish(this->bumper_id, PLAYER_MSGTYPE_DATA, PLAYER_BUMPER_DATA_STATE, reinterpret_cast<void *>(&bumper_data));
+    device.open(path_to_device.c_str(), std::ifstream::in);
+  
+    if (device.is_open()) {
+      device >> bump;
+      device.close();
 
+      bumper_data.bumpers[0] = bump;
+      std::cout << "Publishing player bumper data state" << std::endl;
+      this->Publish(this->bumper_id, PLAYER_MSGTYPE_DATA, PLAYER_BUMPER_DATA_STATE, reinterpret_cast<void *>(&bumper_data));
+    } else {
+      std::cout << "Device is NOT open!!!!!\n";
+    }
 
     usleep(1000000);
   }
 
   delete [] bumper_data.bumpers;
+#if 0
   delete [] geom.bumper_def;
+#endif
 }
 
 extern "C" {
