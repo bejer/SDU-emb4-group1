@@ -5,7 +5,8 @@ DEPENDS = "libtool jpeg guile"
 PN = "player"
 PV = 3.0.2
 PR = "r0"
-SRC_URI = "svn://playerstage.svn.sourceforge.net/svnroot/playerstage/code/player/;module=tags/release-3-0-2;proto=https"
+# rev=9083 corresponds to release-3.0.2 -> maybe use a tag option instead?
+SRC_URI = "svn://playerstage.svn.sourceforge.net/svnroot/playerstage/code/player/;module=trunk;rev=9083;proto=https"
 S="${WORKDIR}/trunk"
 
 inherit pkgconfig cmake
