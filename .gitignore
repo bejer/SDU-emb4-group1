@@ -8,6 +8,7 @@
 *.o
 modules.order
 Module.symvers
+*.so
 
 *~
 
