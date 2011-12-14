@@ -1,8 +1,9 @@
 # Desc: Example plugin makefile
 # CVS: $Id$
 
+PLAYER_VERSION="player-3.0.2-r0" # Remember to update this if you change the PR = "r0" to another value in player_3.0.2.bb
 CROSS_COMPILE_SYSROOT := ${OVEROTOP}/tmp/sysroots/armv7a-angstrom-linux-gnueabi
-PLAYER_INCLUDE_DIR := ${OVEROTOP}/tmp/work/armv7a-angstrom-linux-gnueabi/player-3.1.0-r1/package/usr/include/player-3.1
+PLAYER_INCLUDE_DIR := ${OVEROTOP}/tmp/work/armv7a-angstrom-linux-gnueabi/${PLAYER_VERSION}/package/usr/include/player-3.1 # Don't know why it is player-3.1 :?
 CXX := ${OVEROTOP}/tmp/sysroots/x86_64-linux/usr/armv7a/bin/arm-angstrom-linux-gnueabi-g++
 
 all: libnxt_sense_touch_driver.so
