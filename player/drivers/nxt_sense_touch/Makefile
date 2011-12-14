@@ -1,5 +1,6 @@
 # Desc: Example plugin makefile
 # CVS: $Id$
+OVEROTOP="${HOME}/embedded/emb4/overo-oe-mich/build"
 
 CROSS_COMPILE_SYSROOT := ${OVEROTOP}/tmp/sysroots/armv7a-angstrom-linux-gnueabi
 PLAYER_INCLUDE_DIR := ${OVEROTOP}/tmp/work/armv7a-angstrom-linux-gnueabi/player-3.1.0-r1/package/usr/include/player-3.1
