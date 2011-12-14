@@ -8,7 +8,7 @@ PR = "r1"
 SRC_URI = "svn://playerstage.svn.sourceforge.net/svnroot/playerstage/code/player/;module=trunk;rev=HEAD;proto=https"
 S="${WORKDIR}/trunk"
 
-inherit pkgconfig
+inherit pkgconfig cmake
 
 do_configure () {
 	cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_EXAMPLES=OFF -DBUILD_DOCUMENTATION=OFF -DBUILD_EXAMPLES=OFF -DBUILD_PLAYERCC=OFF -DBUILD_PLAYERCC_BOOST=OFF\
