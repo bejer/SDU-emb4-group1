@@ -1,9 +1,9 @@
-PKG_CONFIG_PATH:=${HOME}/Temp/player_stage/install_of_player-3.0.2/lib64/pkgconfig
+#Remember to have set up the PKG_CONFIG_PATH and the LD_LIBRARY_PATH environment variables
 
-simple_example: simple_example.cpp
-	g++ -o simple_example `pkg-config --cflags playerc++` `pkg-config --libs playerc++` simple_example.cpp
+simple_bumper_example: simple_bumper_example.cpp
+	g++ -o simple_bumper_example `pkg-config --cflags playerc++` `pkg-config --libs playerc++` simple_bumper_example.cpp
 
 .PHONY: clean
 
 clean:
-	rm *.o *.so
+	rm *.o simple_bumper_example
