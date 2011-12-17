@@ -1,0 +1,1 @@
+PYTHONPATH=${PYTHONPATH}:/home/michael/Temp/player_stage/install_of_player-3.0.2/lib64/python2.7/site-packages/ python2.7 simple_example.py
